@@ -124,6 +124,14 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, "space ok\n")
 
+    def test_run_does_not_treat_printf_as_print(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "printf.dt"
+            source.write_text('fn main() { printf("nope\\n"); }', encoding="utf-8")
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: no runnable output found", result.stderr)
+
     def test_run_non_utf8_source_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "non-utf8.dt"
@@ -140,6 +148,18 @@ class DtCliTests(unittest.TestCase):
             result = self.run_dt("build", str(source), "-o", str(artifact))
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: source file is not valid UTF-8", result.stderr)
+
+    def test_run_unreadable_source_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "unreadable.dt"
+            source.write_text('fn main() { print("ok\\n"); }', encoding="utf-8")
+            source.chmod(0)
+            try:
+                result = self.run_dt("run", str(source))
+            finally:
+                source.chmod(0o600)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: unable to read source file", result.stderr)
 
     def test_run_ignores_print_inside_string_literal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

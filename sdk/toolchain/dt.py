@@ -44,6 +44,9 @@ def extract_prints(source: str) -> list[str]:
                 continue
 
             index = position + len("print")
+            if index < len(source) and (source[index].isalnum() or source[index] == "_"):
+                position += 1
+                continue
             while index < len(source) and source[index].isspace():
                 index += 1
             if index >= len(source) or source[index] != "(":
@@ -95,6 +98,8 @@ def read_source(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         raise DtlError(f"source file is not valid UTF-8: {path}") from exc
+    except OSError as exc:
+        raise DtlError(f"unable to read source file: {path}") from exc
 
 
 def run_command(source_path: Path) -> int:
