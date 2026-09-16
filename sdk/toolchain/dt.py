@@ -959,12 +959,18 @@ def _load_project(project_root: Path) -> LoadResult:
         raise DtlError(f"invalid manifest: {manifest_path}: {exc}") from exc
 
     src_dir = project_root / "src"
-    entry_source = src_dir / "main.dt"
-    if not entry_source.exists():
-        raise DtlError(f"entry source not found: {entry_source}")
-    source_paths = sorted(src_dir.rglob("*.dt"))
-    if not source_paths:
-        raise DtlError(f"no .dt files found in {src_dir}")
+    if src_dir.exists():
+        entry_source = src_dir / "main.dt"
+        if not entry_source.exists():
+            raise DtlError(f"entry source not found: {entry_source}")
+        source_paths = sorted(src_dir.rglob("*.dt"))
+        if not source_paths:
+            raise DtlError(f"no .dt files found in {src_dir}")
+    else:
+        entry_source = project_root / "main.dt"
+        if not entry_source.exists():
+            raise DtlError(f"entry source not found: {entry_source}")
+        source_paths = [entry_source]
     program = _parse_sources(source_paths, manifest=manifest, entry_source=entry_source)
     return LoadResult(program=program, project_root=project_root)
 
