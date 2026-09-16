@@ -1182,7 +1182,7 @@ class LoadedArtifacts:
     bytecode: CompiledProgram
 
 
-def load_program(path: Path, *, require_entry: bool = True) -> LoadResult:
+def load_program(path: Path, *, require_entry: bool = True, prefer_project: bool = False) -> LoadResult:
     candidate = path.expanduser()
     if not candidate.exists():
         if candidate.name == "DarkTower.toml":
@@ -1192,8 +1192,16 @@ def load_program(path: Path, *, require_entry: bool = True) -> LoadResult:
         raise DtlError(f"project path not found: {candidate}")
     if candidate.is_file() and candidate.name == "DarkTower.toml":
         return _load_project(candidate.resolve().parent, require_entry=require_entry)
+    if candidate.is_file():
+        resolved = candidate.resolve()
+        if prefer_project:
+            project_root = _find_project_root(resolved.parent, search_parents=True)
+            if project_root is not None:
+                return _load_project(project_root, require_entry=require_entry)
+        return _load_file(resolved)
     if candidate.is_dir():
-        project_root = _find_project_root(candidate.resolve())
+        search_parents = path == Path(".")
+        project_root = _find_project_root(candidate.resolve(), search_parents=search_parents)
         if project_root is None:
             raise DtlError(f"project root not found: {candidate.resolve()}")
         return _load_project(project_root, require_entry=require_entry)
@@ -1209,12 +1217,12 @@ def load_artifacts(path: Path) -> LoadedArtifacts:
     return LoadedArtifacts(source=source, project_root=load_result.project_root, program=load_result.program, bytecode=bytecode)
 
 
-def _find_project_root(start: Path) -> Path | None:
+def _find_project_root(start: Path, *, search_parents: bool) -> Path | None:
     current = start
     while True:
         if (current / "DarkTower.toml").is_file():
             return current
-        if current.parent == current:
+        if not search_parents or current.parent == current:
             return None
         current = current.parent
 
@@ -1299,7 +1307,7 @@ def test_command(source_path: Path) -> int:
 
 
 def load_artifacts_for_tests(path: Path) -> LoadedArtifacts:
-    load_result = load_program(path, require_entry=False)
+    load_result = load_program(path, require_entry=False, prefer_project=True)
     source = path.expanduser()
     if source.exists():
         source = source.resolve()

@@ -361,6 +361,11 @@ fn addition_works() {
         self.assertEqual(result.returncode, 0)
         self.assertIn("2/2 tests passed", result.stdout)
 
+    def test_crypto_chess_test_file_loads_full_project(self) -> None:
+        result = self.run_dt("test", str(CRYPTO_CHESS_PROJECT / "src" / "game.dt"))
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("2/2 tests passed", result.stdout)
+
     def test_crypto_chess_tests_pass_from_nested_cwd(self) -> None:
         result = self.run_dt("test", cwd=CRYPTO_CHESS_PROJECT / "src")
         self.assertEqual(result.returncode, 0)
