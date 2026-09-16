@@ -82,6 +82,12 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, 'line1\nline2"ok"\n')
 
+            artifact = Path(tmp_dir) / "escaped.dtb"
+            build_result = self.run_dt("build", str(source), "-o", str(artifact))
+            self.assertEqual(build_result.returncode, 0)
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+            self.assertEqual(payload["prints"], ['line1\nline2"ok"\n'])
+
     def test_run_invalid_escape_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "invalid-escape.dt"
@@ -110,6 +116,14 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: output path is not a regular file", result.stderr)
 
+    def test_run_accepts_print_whitespace_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "whitespace.dt"
+            source.write_text('fn main() { print ( "space ok\\n" ) ; }', encoding="utf-8")
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "space ok\n")
+
     def test_run_non_utf8_source_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "non-utf8.dt"
@@ -134,6 +148,12 @@ class DtCliTests(unittest.TestCase):
             result = self.run_dt("run", str(source))
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, 'print("x");\n')
+
+            artifact = Path(tmp_dir) / "nested-print.dtb"
+            build_result = self.run_dt("build", str(source), "-o", str(artifact))
+            self.assertEqual(build_result.returncode, 0)
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+            self.assertEqual(payload["prints"], ['print("x");\n'])
 
 
 if __name__ == "__main__":

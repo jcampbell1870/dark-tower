@@ -38,8 +38,25 @@ def extract_prints(source: str) -> list[str]:
             position += 1
             continue
 
-        if not in_string and source.startswith('print("', position):
-            literal_start = position + len('print("')
+        if not in_string and source.startswith("print", position):
+            if position > 0 and (source[position - 1].isalnum() or source[position - 1] == "_"):
+                position += 1
+                continue
+
+            index = position + len("print")
+            while index < len(source) and source[index].isspace():
+                index += 1
+            if index >= len(source) or source[index] != "(":
+                position += 1
+                continue
+            index += 1
+            while index < len(source) and source[index].isspace():
+                index += 1
+            if index >= len(source) or source[index] != '"':
+                position += 1
+                continue
+
+            literal_start = index + 1
             index = literal_start
 
             while index < len(source):
