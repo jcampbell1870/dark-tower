@@ -1,4 +1,4 @@
-# Dark Tower SDK (v0.1)
+# Dark Tower SDK (v0.2)
 
 This folder contains starter materials for the Dark Tower toolchain and runtime layout.
 
@@ -8,14 +8,16 @@ This folder contains starter materials for the Dark Tower toolchain and runtime 
 - `runtime/` — runtime component placeholders
 - `templates/` — starter app templates
 
-## Planned Commands
+## Prototype Commands
 
-- `dt init`
-- `dt build`
-- `dt run`
-- `dt test`
-- `dt pack`
+- `dt --help`
+- `dt run <path>`
+- `dt build <path> -o <output>`
 
 ## Current State
 
-Documentation and structure scaffold for initial implementation work.
+Runnable CLI foundation:
+
+- `dt` launcher at repository root
+- implementation in `sdk/toolchain/dt.py`
+- supports simple `print("...");` execution and build artifact generation

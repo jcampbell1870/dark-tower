@@ -7,7 +7,7 @@ Dark Tower is a new computing platform initiative that includes:
 - **Dark Tower Browser (DTB)**: a built-in secure web browser platform
 - **Dark Tower Console**: a game-system profile and SDK strategy
 
-> This repository contains the **v0.1 foundation**: language specification, programming manual, architecture documents, SDK starter layout, website, and downloadable starter artifacts.
+> This repository now contains the **v0.2 foundation**: language specification, programming manual, architecture documents, SDK starter layout, website, downloadable starter artifacts, and a runnable `dt` CLI prototype.
 
 ## Quick Links
 
