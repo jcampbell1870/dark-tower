@@ -1182,28 +1182,29 @@ class LoadedArtifacts:
     bytecode: CompiledProgram
 
 
-def load_program(path: Path) -> LoadResult:
+def load_program(path: Path, *, require_entry: bool = True) -> LoadResult:
     candidate = path.expanduser()
     if not candidate.exists():
-        resolved = candidate.resolve()
         if candidate.name == "DarkTower.toml":
-            return _load_project(resolved.parent)
+            return _load_project(candidate.parent, require_entry=require_entry)
         if candidate.suffix == ".dt":
-            return _load_file(resolved)
-        raise DtlError(f"project path not found: {resolved}")
+            return _load_file(candidate)
+        raise DtlError(f"project path not found: {candidate}")
     if candidate.is_file() and candidate.name == "DarkTower.toml":
-        return _load_project(candidate.resolve().parent)
+        return _load_project(candidate.resolve().parent, require_entry=require_entry)
     if candidate.is_dir():
         project_root = _find_project_root(candidate.resolve())
         if project_root is None:
             raise DtlError(f"project root not found: {candidate.resolve()}")
-        return _load_project(project_root)
+        return _load_project(project_root, require_entry=require_entry)
     return _load_file(candidate.resolve())
 
 
 def load_artifacts(path: Path) -> LoadedArtifacts:
     load_result = load_program(path)
-    source = path.expanduser().resolve()
+    source = path.expanduser()
+    if source.exists():
+        source = source.resolve()
     bytecode = BytecodeCompiler().compile_program(load_result.program)
     return LoadedArtifacts(source=source, project_root=load_result.project_root, program=load_result.program, bytecode=bytecode)
 
@@ -1218,7 +1219,7 @@ def _find_project_root(start: Path) -> Path | None:
         current = current.parent
 
 
-def _load_project(project_root: Path) -> LoadResult:
+def _load_project(project_root: Path, *, require_entry: bool = True) -> LoadResult:
     manifest_path = project_root / "DarkTower.toml"
     if not manifest_path.exists():
         raise DtlError(f"DarkTower.toml not found in {project_root}")
@@ -1240,6 +1241,8 @@ def _load_project(project_root: Path) -> LoadResult:
         if not src_dir.is_dir():
             raise DtlError(f"source directory is not a directory: {src_dir}")
         entry_source = src_dir / "main.dt"
+        if require_entry and not entry_source.exists():
+            raise DtlError(f"entry source not found: {entry_source}")
         if entry_source.exists() and not entry_source.is_file():
             raise DtlError(f"entry source is not a file: {entry_source}")
         source_paths = sorted(src_dir.rglob("*.dt"))
@@ -1290,9 +1293,18 @@ def run_command(source_path: Path) -> int:
 
 
 def test_command(source_path: Path) -> int:
-    loaded = load_artifacts(source_path)
+    loaded = load_artifacts_for_tests(source_path)
     vm = VirtualMachine(loaded.bytecode)
     return vm.run_tests()
+
+
+def load_artifacts_for_tests(path: Path) -> LoadedArtifacts:
+    load_result = load_program(path, require_entry=False)
+    source = path.expanduser()
+    if source.exists():
+        source = source.resolve()
+    bytecode = BytecodeCompiler().compile_program(load_result.program)
+    return LoadedArtifacts(source=source, project_root=load_result.project_root, program=load_result.program, bytecode=bytecode)
 
 
 def serialize_bytecode(program: CompiledProgram) -> dict[str, Any]:

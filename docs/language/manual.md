@@ -30,7 +30,7 @@ The current runtime compiles and executes a practical bytecode-backed subset of 
 - integers, booleans, strings, and lists
 - `let`, assignment, `if/else`, `while`, `for`, and `return`
 - builtin helpers: `print`, `println`, `len`, `join`, `push`, `pop`, `clone`, `hash`, `to_string`, and `assert_eq`
-- multi-file project loading through `DarkTower.toml`, with `src/main.dt` as the entry module and every `src/**/*.dt` file loaded into the program
+- multi-file project loading through `DarkTower.toml`, with `src/main.dt` as the entry module for `dt run` and `dt build`, and every `src/**/*.dt` file loaded into the program
 - test discovery for functions marked with the `@test` decorator across loaded project sources
 - bytecode compilation plus VM execution for `dt run`, `dt test`, and build artifacts
 
