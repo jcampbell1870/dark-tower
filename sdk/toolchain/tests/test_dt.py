@@ -402,6 +402,29 @@ fn addition_works() {
         self.assertEqual(result.returncode, 0)
         self.assertIn("2/2 tests passed", result.stdout)
 
+    def test_test_file_path_runs_only_selected_file_tests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = Path(tmp_dir) / "project"
+            (project / "src").mkdir(parents=True)
+            (project / "DarkTower.toml").write_text(
+                "[package]\nname = \"split-tests\"\nversion = \"0.1.0\"\nedition = \"2026\"\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "main.dt").write_text("fn main() { println(\"ok\"); }\n", encoding="utf-8")
+            (project / "src" / "alpha.dt").write_text(
+                "@test\nfn alpha() {\n  assert_eq(1, 1);\n}\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "beta.dt").write_text(
+                "@test\nfn beta() {\n  assert_eq(2, 2);\n}\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("test", str(project / "src" / "alpha.dt"))
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("ok alpha", result.stdout)
+            self.assertIn("1/1 tests passed", result.stdout)
+            self.assertNotIn("ok beta", result.stdout)
+
     def test_crypto_chess_tests_pass_from_nested_cwd(self) -> None:
         result = self.run_dt("test", cwd=CRYPTO_CHESS_PROJECT / "src")
         self.assertEqual(result.returncode, 0)

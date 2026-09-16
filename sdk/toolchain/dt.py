@@ -694,6 +694,7 @@ class BytecodeCompiler:
         if isinstance(statement, ForStmt):
             iterable_name = self._temp_name("iter")
             index_name = self._temp_name("index")
+            self._emit("PUSH_SCOPE")
             self._compile_expr(statement.iterable)
             self._emit("DEF_NAME", iterable_name)
             self._emit("PUSH_CONST", 0)
@@ -717,6 +718,7 @@ class BytecodeCompiler:
             self._emit("STORE_NAME", index_name)
             self._emit("JUMP", loop_start)
             self._patch(jump_to_end, len(self.instructions))
+            self._emit("POP_SCOPE")
             return
         if isinstance(statement, ReturnStmt):
             if statement.value is None:
@@ -829,10 +831,18 @@ class VirtualMachine:
         self.call_function("main", [])
         return 0
 
-    def run_tests(self) -> int:
-        total = len(self.program.tests)
+    def run_tests(self, selected_source: Path | None = None) -> int:
+        tests = self.program.tests
+        if selected_source is not None:
+            selected = str(selected_source.resolve())
+            tests = [
+                name
+                for name in self.program.tests
+                if self.program.functions[name].source == selected
+            ]
+        total = len(tests)
         passed = 0
-        for name in self.program.tests:
+        for name in tests:
             try:
                 self.call_function(name, [])
                 passed += 1
@@ -1183,6 +1193,7 @@ class LoadedArtifacts:
     project_root: Path | None
     program: Program
     bytecode: CompiledProgram
+    selected_source: Path | None = None
 
 
 def load_program(path: Path, *, require_entry: bool = True, prefer_project: bool = False) -> LoadResult:
@@ -1203,8 +1214,7 @@ def load_program(path: Path, *, require_entry: bool = True, prefer_project: bool
                 return _load_project(project_root, require_entry=require_entry)
         return _load_file(resolved)
     if candidate.is_dir():
-        search_parents = path == Path(".")
-        project_root = _find_project_root(candidate.resolve(), search_parents=search_parents)
+        project_root = _find_project_root(candidate.resolve(), search_parents=True)
         if project_root is None:
             raise DtlError(f"project root not found: {candidate.resolve()}")
         return _load_project(project_root, require_entry=require_entry)
@@ -1301,7 +1311,7 @@ def run_command(source_path: Path) -> int:
 def test_command(source_path: Path) -> int:
     loaded = load_artifacts_for_tests(source_path)
     vm = VirtualMachine(loaded.bytecode)
-    return vm.run_tests()
+    return vm.run_tests(selected_source=loaded.selected_source)
 
 
 def load_artifacts_for_tests(path: Path) -> LoadedArtifacts:
@@ -1309,12 +1319,22 @@ def load_artifacts_for_tests(path: Path) -> LoadedArtifacts:
 
 
 def _load_compiled_artifacts(path: Path, *, require_entry: bool, prefer_project: bool) -> LoadedArtifacts:
+    selected_source = None
+    raw_source = path.expanduser()
+    if raw_source.exists() and raw_source.is_file() and raw_source.suffix == ".dt":
+        selected_source = raw_source.resolve()
     load_result = load_program(path, require_entry=require_entry, prefer_project=prefer_project)
-    source = path.expanduser()
+    source = raw_source
     if source.exists():
         source = source.resolve()
     bytecode = BytecodeCompiler().compile_program(load_result.program)
-    return LoadedArtifacts(source=source, project_root=load_result.project_root, program=load_result.program, bytecode=bytecode)
+    return LoadedArtifacts(
+        source=source,
+        project_root=load_result.project_root,
+        program=load_result.program,
+        bytecode=bytecode,
+        selected_source=selected_source,
+    )
 
 
 def serialize_bytecode(program: CompiledProgram) -> dict[str, Any]:
