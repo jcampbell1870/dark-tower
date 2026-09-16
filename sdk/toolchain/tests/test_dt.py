@@ -13,25 +13,28 @@ SAMPLE = REPO_ROOT / "samples" / "hello" / "main.dt"
 
 
 class DtCliTests(unittest.TestCase):
+    def run_dt(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["bash", str(DT), *args],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
     def test_help(self) -> None:
-        result = subprocess.run([str(DT), "--help"], check=False, capture_output=True, text=True)
+        result = self.run_dt("--help")
         self.assertEqual(result.returncode, 0)
         self.assertIn("Dark Tower Language (DTL) prototype CLI", result.stdout)
 
     def test_run_sample(self) -> None:
-        result = subprocess.run([str(DT), "run", str(SAMPLE)], check=False, capture_output=True, text=True)
+        result = self.run_dt("run", str(SAMPLE))
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "Hello, Dark Tower!\n")
 
     def test_build_sample(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact = Path(tmp_dir) / "hello.dtb"
-            result = subprocess.run(
-                [str(DT), "build", str(SAMPLE), "-o", str(artifact)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+            result = self.run_dt("build", str(SAMPLE), "-o", str(artifact))
             self.assertEqual(result.returncode, 0)
             self.assertTrue(artifact.exists())
 
@@ -44,26 +47,32 @@ class DtCliTests(unittest.TestCase):
             source = Path(tmp_dir) / "unicode.dt"
             source.write_text('fn main() { print("café ☕\\n"); }', encoding="utf-8")
 
-            run_result = subprocess.run(
-                [str(DT), "run", str(source)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+            run_result = self.run_dt("run", str(source))
             self.assertEqual(run_result.returncode, 0)
             self.assertEqual(run_result.stdout, "café ☕\n")
 
             artifact = Path(tmp_dir) / "unicode.dtb"
-            build_result = subprocess.run(
-                [str(DT), "build", str(source), "-o", str(artifact)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+            build_result = self.run_dt("build", str(source), "-o", str(artifact))
             self.assertEqual(build_result.returncode, 0)
 
             payload = json.loads(artifact.read_text(encoding="utf-8"))
             self.assertEqual(payload["prints"], ["café ☕\n"])
+
+    def test_run_missing_source(self) -> None:
+        missing = REPO_ROOT / "samples" / "hello" / "does-not-exist.dt"
+        result = self.run_dt("run", str(missing))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("error: source file not found", result.stderr)
+
+    def test_build_without_print_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "empty-output.dt"
+            source.write_text("fn main() {}", encoding="utf-8")
+            artifact = Path(tmp_dir) / "empty-output.dtb"
+
+            result = self.run_dt("build", str(source), "-o", str(artifact))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: no runnable output found", result.stderr)
 
 
 if __name__ == "__main__":

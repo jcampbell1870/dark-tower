@@ -46,6 +46,8 @@ def run_command(source_path: Path) -> int:
 def build_command(source_path: Path, output_path: Path) -> int:
     source = read_source(source_path)
     outputs = extract_prints(source)
+    if not outputs:
+        raise DtlError(f"no runnable output found in {source_path}")
     artifact = {
         "format": "dtl-prototype-v0.2",
         "source": str(source_path),
