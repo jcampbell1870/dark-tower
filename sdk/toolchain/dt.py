@@ -936,12 +936,12 @@ class LoadResult:
 
 
 def load_program(path: Path) -> LoadResult:
-    candidate = path.resolve()
+    candidate = path.expanduser()
     if candidate.is_file() and candidate.name == "DarkTower.toml":
-        return _load_project(candidate.parent)
+        return _load_project(candidate.resolve().parent)
     if candidate.is_dir():
-        return _load_project(candidate)
-    return _load_file(candidate)
+        return _load_project(candidate.resolve())
+    return _load_file(candidate.resolve())
 
 
 
@@ -959,13 +959,13 @@ def _load_project(project_root: Path) -> LoadResult:
         raise DtlError(f"unable to read manifest: {manifest_path}") from exc
     try:
         manifest = tomllib.loads(manifest_text)
-    except UnicodeDecodeError as exc:
-        raise DtlError(f"manifest is not valid UTF-8: {manifest_path}") from exc
     except tomllib.TOMLDecodeError as exc:
         raise DtlError(f"invalid manifest: {manifest_path}: {exc}") from exc
 
     src_dir = project_root / "src"
     if src_dir.exists():
+        if not src_dir.is_dir():
+            raise DtlError(f"source directory is not a directory: {src_dir}")
         entry_source = src_dir / "main.dt"
         if not entry_source.exists():
             raise DtlError(f"entry source not found: {entry_source}")

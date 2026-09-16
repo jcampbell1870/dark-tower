@@ -149,6 +149,8 @@ dt test
 dt test ./samples/crypto-chess
 ```
 
+`dt test` executes functions marked with the `@test` decorator.
+
 ## 9) Building for Targets
 
 ```bash
