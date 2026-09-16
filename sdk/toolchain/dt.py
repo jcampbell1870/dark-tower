@@ -652,15 +652,16 @@ class Interpreter:
                 self._execute_block(statement.else_branch, Environment(env))
             return
         if isinstance(statement, WhileStmt):
+            loop_env = Environment(env)
             while self._is_truthy(self._evaluate(statement.condition, env)):
-                self._execute_block(statement.body, Environment(env))
+                self._execute_block(statement.body, loop_env)
             return
         if isinstance(statement, ForStmt):
             iterable = self._evaluate(statement.iterable, env)
             if not isinstance(iterable, (list, str)):
                 raise DtlError("for-loop expects a list or string")
+            loop_env = Environment(env)
             for item in iterable:
-                loop_env = Environment(env)
                 loop_env.define(statement.name, item)
                 self._execute_block(statement.body, loop_env)
             return
@@ -720,10 +721,10 @@ class Interpreter:
     def _evaluate_binary(self, expr: BinaryExpr, env: Environment) -> Any:
         if expr.operator == "&&":
             left = self._evaluate(expr.left, env)
-            return self._evaluate(expr.right, env) if self._is_truthy(left) else False
+            return self._evaluate(expr.right, env) if self._is_truthy(left) else left
         if expr.operator == "||":
             left = self._evaluate(expr.left, env)
-            return True if self._is_truthy(left) else self._is_truthy(self._evaluate(expr.right, env))
+            return left if self._is_truthy(left) else self._evaluate(expr.right, env)
 
         left = self._evaluate(expr.left, env)
         right = self._evaluate(expr.right, env)

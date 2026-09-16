@@ -40,9 +40,9 @@ The prototype runtime now supports:
 Run them with:
 
 ```bash
-./dt run /home/runner/work/dark-tower/dark-tower/samples/hello
-./dt run /home/runner/work/dark-tower/dark-tower/samples/crypto-chess
-./dt test /home/runner/work/dark-tower/dark-tower/samples/crypto-chess
+./dt run samples/hello
+./dt run samples/crypto-chess
+./dt test samples/crypto-chess
 ```
 
 ## Repository Layout

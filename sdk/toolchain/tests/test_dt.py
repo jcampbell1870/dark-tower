@@ -104,6 +104,48 @@ fn main() {
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, ".K\n")
 
+    def test_while_loop_reuses_block_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "loop-scope.dt"
+            source.write_text(
+                """
+fn main() {
+  let i = 0;
+  while i < 3 {
+    let carry = i;
+    if carry < 2 {
+      i = carry + 1;
+    } else {
+      i = 3;
+    }
+  }
+  println(to_string(i));
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "3\n")
+
+    def test_logical_operators_return_operand_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "logic.dt"
+            source.write_text(
+                """
+fn main() {
+  println(to_string(0 || 5));
+  println(("left" && "right"));
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "5\nright\n")
+
     def test_test_command_runs_annotated_tests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project = Path(tmp_dir) / "project"
