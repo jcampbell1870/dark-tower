@@ -944,17 +944,20 @@ def load_program(path: Path) -> LoadResult:
     if candidate.is_file() and candidate.name == "DarkTower.toml":
         return _load_project(candidate.resolve().parent)
     if candidate.is_dir():
-        return _load_project(_find_project_root(candidate.resolve()))
+        project_root = _find_project_root(candidate.resolve())
+        if project_root is None:
+            raise DtlError(f"project root not found: {candidate.resolve()}")
+        return _load_project(project_root)
     return _load_file(candidate.resolve())
 
 
-def _find_project_root(start: Path) -> Path:
+def _find_project_root(start: Path) -> Path | None:
     current = start
     while True:
         if (current / "DarkTower.toml").is_file():
             return current
         if current.parent == current:
-            return start
+            return None
         current = current.parent
 
 
@@ -980,13 +983,12 @@ def _load_project(project_root: Path) -> LoadResult:
         if not src_dir.is_dir():
             raise DtlError(f"source directory is not a directory: {src_dir}")
         entry_source = src_dir / "main.dt"
-        if not entry_source.exists():
-            raise DtlError(f"entry source not found: {entry_source}")
-        if not entry_source.is_file():
+        if entry_source.exists() and not entry_source.is_file():
             raise DtlError(f"entry source is not a file: {entry_source}")
         source_paths = sorted(src_dir.rglob("*.dt"))
         if not source_paths:
             raise DtlError(f"no .dt files found in {src_dir}")
+        entry = entry_source if entry_source.exists() else None
     else:
         entry_source = project_root / "main.dt"
         if not entry_source.exists():
@@ -994,7 +996,8 @@ def _load_project(project_root: Path) -> LoadResult:
         if not entry_source.is_file():
             raise DtlError(f"entry source is not a file: {entry_source}")
         source_paths = [entry_source]
-    program = _parse_sources(source_paths, manifest=manifest, entry_source=entry_source)
+        entry = entry_source
+    program = _parse_sources(source_paths, manifest=manifest, entry_source=entry)
     return LoadResult(program=program, project_root=project_root)
 
 
@@ -1009,7 +1012,7 @@ def _load_file(source_path: Path) -> LoadResult:
 
 
 
-def _parse_sources(source_paths: list[Path], manifest: dict[str, Any] | None, entry_source: Path) -> Program:
+def _parse_sources(source_paths: list[Path], manifest: dict[str, Any] | None, entry_source: Path | None) -> Program:
     functions: dict[str, FunctionDecl] = {}
     tests: list[str] = []
     for source_path in source_paths:
@@ -1043,6 +1046,8 @@ def test_command(source_path: Path) -> int:
 def build_command(source_path: Path, output_path: Path, target: str) -> int:
     load_result = load_program(source_path)
     program = load_result.program
+    if "main" not in program.functions:
+        raise DtlError("missing entry function: main")
     package = None
     if program.manifest is not None:
         package = program.manifest.get("package")

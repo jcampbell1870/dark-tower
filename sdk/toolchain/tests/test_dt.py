@@ -237,6 +237,32 @@ fn main() {
             self.assertIn("FAILED it_fails", result.stderr)
             self.assertIn("0/1 tests passed", result.stdout)
 
+    def test_test_command_supports_test_only_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = Path(tmp_dir) / "project"
+            (project / "src").mkdir(parents=True)
+            (project / "DarkTower.toml").write_text(
+                "[package]\nname = \"tests\"\nversion = \"0.1.0\"\nedition = \"2026\"\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "math.dt").write_text(
+                """
+fn add(a, b) {
+  return a + b;
+}
+
+@test
+fn addition_works() {
+  assert_eq(add(1, 4), 5);
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("test", str(project))
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("1/1 tests passed", result.stdout)
+
     def test_init_creates_project_scaffold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             result = self.run_dt("init", str(Path(tmp_dir) / "demo"))
@@ -266,6 +292,12 @@ fn main() {
         self.assertEqual(result.returncode, 1)
         self.assertIn("error: project path not found", result.stderr)
 
+    def test_run_outside_project_reports_project_root_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = self.run_dt("run", cwd=Path(tmp_dir))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: project root not found", result.stderr)
+
     def test_run_non_utf8_source_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "non-utf8.dt"
@@ -273,6 +305,15 @@ fn main() {
             result = self.run_dt("run", str(source))
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: source file is not valid UTF-8", result.stderr)
+
+    def test_build_requires_main_function(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "library.dt"
+            source.write_text("fn helper() { println(\"ok\"); }\n", encoding="utf-8")
+            artifact = Path(tmp_dir) / "library.dtb"
+            result = self.run_dt("build", str(source), "-o", str(artifact))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: missing entry function: main", result.stderr)
 
     def test_crypto_chess_sample_runs(self) -> None:
         result = self.run_dt("run", str(CRYPTO_CHESS_PROJECT))
