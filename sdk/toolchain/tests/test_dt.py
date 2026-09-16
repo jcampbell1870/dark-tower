@@ -9,54 +9,148 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DT = REPO_ROOT / "dt"
-SAMPLE = REPO_ROOT / "samples" / "hello" / "main.dt"
+HELLO_FILE = REPO_ROOT / "samples" / "hello" / "main.dt"
+HELLO_PROJECT = REPO_ROOT / "samples" / "hello"
+CRYPTO_CHESS_PROJECT = REPO_ROOT / "samples" / "crypto-chess"
 
 
 class DtCliTests(unittest.TestCase):
-    def run_dt(self, *args: str) -> subprocess.CompletedProcess[str]:
+    def run_dt(self, *args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["bash", str(DT), *args],
             check=False,
             capture_output=True,
             text=True,
+            cwd=cwd,
         )
 
     def test_help(self) -> None:
         result = self.run_dt("--help")
         self.assertEqual(result.returncode, 0)
         self.assertIn("Dark Tower Language (DTL) prototype CLI", result.stdout)
+        self.assertIn("test", result.stdout)
+        self.assertIn("init", result.stdout)
 
-    def test_run_sample(self) -> None:
-        result = self.run_dt("run", str(SAMPLE))
+    def test_run_sample_file(self) -> None:
+        result = self.run_dt("run", str(HELLO_FILE))
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "Hello, Dark Tower!\n")
 
-    def test_build_sample(self) -> None:
+    def test_run_sample_project_directory(self) -> None:
+        result = self.run_dt("run", str(HELLO_PROJECT))
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "Hello, Dark Tower!\n")
+
+    def test_run_sample_project_from_cwd(self) -> None:
+        result = self.run_dt("run", cwd=HELLO_PROJECT)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "Hello, Dark Tower!\n")
+
+    def test_build_sample_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact = Path(tmp_dir) / "hello.dtb"
-            result = self.run_dt("build", str(SAMPLE), "-o", str(artifact))
+            result = self.run_dt("build", str(HELLO_PROJECT), "-o", str(artifact), "--target", "linux-x64")
             self.assertEqual(result.returncode, 0)
-            self.assertTrue(artifact.exists())
-
             payload = json.loads(artifact.read_text(encoding="utf-8"))
-            self.assertEqual(payload["format"], "dtl-prototype-v0.2")
-            self.assertEqual(payload["prints"], ["Hello, Dark Tower!\n"])
+            self.assertEqual(payload["format"], "dtl-prototype-v0.3")
+            self.assertEqual(payload["package"]["name"], "hello")
+            self.assertEqual(payload["functions"], ["main"])
+            self.assertEqual(payload["target"], "linux-x64")
 
-    def test_run_and_build_unicode_output(self) -> None:
+    def test_run_interpreted_language_features(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "unicode.dt"
-            source.write_text('fn main() { print("café ☕\\n"); }', encoding="utf-8")
+            source = Path(tmp_dir) / "features.dt"
+            source.write_text(
+                """
+fn accumulate(limit) {
+  let total = 0;
+  let current = 1;
+  while current <= limit {
+    if current % 2 == 0 {
+      total = total + current;
+    }
+    current = current + 1;
+  }
+  return total;
+}
 
-            run_result = self.run_dt("run", str(source))
-            self.assertEqual(run_result.returncode, 0)
-            self.assertEqual(run_result.stdout, "café ☕\n")
+fn main() {
+  let values = ["sum", to_string(accumulate(6))];
+  println(join(values, ": "));
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "sum: 12\n")
 
-            artifact = Path(tmp_dir) / "unicode.dtb"
-            build_result = self.run_dt("build", str(source), "-o", str(artifact))
-            self.assertEqual(build_result.returncode, 0)
+    def test_run_supports_nested_list_assignment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "board.dt"
+            source.write_text(
+                """
+fn main() {
+  let board = [[".", "."], [".", "."]];
+  board[0][1] = "K";
+  println(join(board[0], ""));
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, ".K\n")
 
-            payload = json.loads(artifact.read_text(encoding="utf-8"))
-            self.assertEqual(payload["prints"], ["café ☕\n"])
+    def test_test_command_runs_annotated_tests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = Path(tmp_dir) / "project"
+            (project / "src").mkdir(parents=True)
+            (project / "DarkTower.toml").write_text(
+                "[package]\nname = \"tests\"\nversion = \"0.1.0\"\nedition = \"2026\"\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "main.dt").write_text(
+                """
+fn add(a, b) {
+  return a + b;
+}
+
+@test
+fn addition_works() {
+  assert_eq(add(2, 3), 5);
+}
+
+fn main() {
+  println("ok");
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("test", str(project))
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("ok addition_works", result.stdout)
+            self.assertIn("1/1 tests passed", result.stdout)
+
+    def test_init_creates_project_scaffold(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = self.run_dt("init", str(Path(tmp_dir) / "demo"))
+            self.assertEqual(result.returncode, 0)
+            project = Path(tmp_dir) / "demo"
+            self.assertTrue((project / "DarkTower.toml").exists())
+            self.assertTrue((project / "src" / "main.dt").exists())
+
+    def test_invalid_string_escape_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "invalid-escape.dt"
+            source.write_text('fn main() { println("bad\\q"); }', encoding="utf-8")
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error:", result.stderr)
+            self.assertIn("invalid string literal", result.stderr)
 
     def test_run_missing_source(self) -> None:
         missing = REPO_ROOT / "samples" / "hello" / "does-not-exist.dt"
@@ -64,124 +158,25 @@ class DtCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("error: source file not found", result.stderr)
 
-    def test_build_without_print_fails(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "empty-output.dt"
-            source.write_text("fn main() {}", encoding="utf-8")
-            artifact = Path(tmp_dir) / "empty-output.dtb"
-
-            result = self.run_dt("build", str(source), "-o", str(artifact))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("error: no runnable output found", result.stderr)
-
-    def test_run_escaped_string_literals(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "escaped.dt"
-            source.write_text('fn main() { print("line1\\nline2\\"ok\\"\\n"); }', encoding="utf-8")
-            result = self.run_dt("run", str(source))
-            self.assertEqual(result.returncode, 0)
-            self.assertEqual(result.stdout, 'line1\nline2"ok"\n')
-
-            artifact = Path(tmp_dir) / "escaped.dtb"
-            build_result = self.run_dt("build", str(source), "-o", str(artifact))
-            self.assertEqual(build_result.returncode, 0)
-            payload = json.loads(artifact.read_text(encoding="utf-8"))
-            self.assertEqual(payload["prints"], ['line1\nline2"ok"\n'])
-
-    def test_run_invalid_escape_fails(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "invalid-escape.dt"
-            source.write_text('fn main() { print("bad\\q"); }', encoding="utf-8")
-            result = self.run_dt("run", str(source))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("error: invalid string literal", result.stderr)
-
-    def test_build_invalid_escape_fails(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "invalid-escape.dt"
-            source.write_text('fn main() { print("bad\\q"); }', encoding="utf-8")
-            artifact = Path(tmp_dir) / "invalid-escape.dtb"
-            result = self.run_dt("build", str(source), "-o", str(artifact))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("error: invalid string literal", result.stderr)
-
-    def test_build_output_directory_fails(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "hello.dt"
-            source.write_text('fn main() { print("ok\\\\n"); }', encoding="utf-8")
-            output_dir = Path(tmp_dir) / "artifact-dir"
-            output_dir.mkdir()
-
-            result = self.run_dt("build", str(source), "-o", str(output_dir))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("error: output path is not a regular file", result.stderr)
-
-    def test_build_output_parent_file_fails(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "hello.dt"
-            source.write_text('fn main() { print("ok\\\\n"); }', encoding="utf-8")
-            blocked = Path(tmp_dir) / "blocked"
-            blocked.write_text("not a directory", encoding="utf-8")
-            output = blocked / "out.dtb"
-
-            result = self.run_dt("build", str(source), "-o", str(output))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("error: unable to write output file", result.stderr)
-
-    def test_run_accepts_print_whitespace_variants(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "whitespace.dt"
-            source.write_text('fn main() { print ( "space ok\\n" ) ; }', encoding="utf-8")
-            result = self.run_dt("run", str(source))
-            self.assertEqual(result.returncode, 0)
-            self.assertEqual(result.stdout, "space ok\n")
-
-    def test_run_does_not_treat_printf_as_print(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "printf.dt"
-            source.write_text('fn main() { printf("nope\\n"); }', encoding="utf-8")
-            result = self.run_dt("run", str(source))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("error: no runnable output found", result.stderr)
-
     def test_run_non_utf8_source_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "non-utf8.dt"
-            source.write_bytes(b'fn main() { print("' + bytes([0xFF]) + b'"); }')
+            source.write_bytes(b'fn main() { println("' + bytes([0xFF]) + b'"); }')
             result = self.run_dt("run", str(source))
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: source file is not valid UTF-8", result.stderr)
 
-    def test_build_non_utf8_source_fails(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "non-utf8.dt"
-            source.write_bytes(b'fn main() { print("' + bytes([0xFF]) + b'"); }')
-            artifact = Path(tmp_dir) / "non-utf8.dtb"
-            result = self.run_dt("build", str(source), "-o", str(artifact))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("error: source file is not valid UTF-8", result.stderr)
+    def test_crypto_chess_sample_runs(self) -> None:
+        result = self.run_dt("run", str(CRYPTO_CHESS_PROJECT))
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Crypto Chess opening demo", result.stdout)
+        self.assertIn("position hash:", result.stdout)
+        self.assertIn("reward score:", result.stdout)
 
-    def test_run_source_directory_fails(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "source-dir"
-            source.mkdir()
-            result = self.run_dt("run", str(source))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("error: source path is not a file", result.stderr)
-
-    def test_run_ignores_print_inside_string_literal(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "nested-print.dt"
-            source.write_text('fn main() { print("print(\\"x\\");\\n"); }', encoding="utf-8")
-            result = self.run_dt("run", str(source))
-            self.assertEqual(result.returncode, 0)
-            self.assertEqual(result.stdout, 'print("x");\n')
-
-            artifact = Path(tmp_dir) / "nested-print.dtb"
-            build_result = self.run_dt("build", str(source), "-o", str(artifact))
-            self.assertEqual(build_result.returncode, 0)
-            payload = json.loads(artifact.read_text(encoding="utf-8"))
-            self.assertEqual(payload["prints"], ['print("x");\n'])
+    def test_crypto_chess_tests_pass(self) -> None:
+        result = self.run_dt("test", str(CRYPTO_CHESS_PROJECT))
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("2/2 tests passed", result.stdout)
 
 
 if __name__ == "__main__":

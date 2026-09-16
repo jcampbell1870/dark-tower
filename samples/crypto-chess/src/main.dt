@@ -1,0 +1,7 @@
+fn main() {
+  let board = run_demo();
+  println("Crypto Chess opening demo");
+  print_board(board);
+  println("position hash: " + to_string(board_signature(board)));
+  println("reward score: " + to_string(reward_score(board)));
+}

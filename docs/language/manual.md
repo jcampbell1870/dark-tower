@@ -14,13 +14,25 @@ cd hello-tower
 dt run
 ```
 
-Expected `src/main.dt`:
+Generated `src/main.dt`:
 
 ```dt
 fn main() {
-  print("Hello, Dark Tower!\n");
+  println("Hello, Dark Tower!");
 }
 ```
+
+## Implemented Prototype Subset
+
+The current runtime executes a practical subset of DTL:
+
+- top-level `fn` declarations
+- integers, booleans, strings, and lists
+- `let`, assignment, `if/else`, `while`, `for`, and `return`
+- builtin helpers: `print`, `println`, `len`, `join`, `push`, `pop`, `clone`, `hash`, `to_string`, and `assert_eq`
+- project loading through `DarkTower.toml` with `src/main.dt` as the entry module
+
+Features documented later in this manual that go beyond this subset remain part of the broader language design rather than the current runtime implementation.
 
 ## 2) Variables, Mutability, and Constants
 
@@ -134,14 +146,14 @@ Run:
 
 ```bash
 dt test
+dt test ./samples/crypto-chess
 ```
 
 ## 9) Building for Targets
 
 ```bash
-dt build --target dtos-desktop-x64
-dt build --target dtos-mobile-arm64
-dt build --target dtos-console-a64
+dt build -o build/app.dtb --target linux-x64
+dt build ./samples/crypto-chess -o build/crypto-chess.dtb --target dtos-console-a64
 ```
 
 ## 10) Best Practices

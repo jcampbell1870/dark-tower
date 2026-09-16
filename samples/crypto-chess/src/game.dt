@@ -1,0 +1,85 @@
+fn new_board() {
+  return [
+    ["r", "n", "b", "q", "k", "b", "n", "r"],
+    ["p", "p", "p", "p", "p", "p", "p", "p"],
+    [".", ".", ".", ".", ".", ".", ".", "."],
+    [".", ".", ".", ".", ".", ".", ".", "."],
+    [".", ".", ".", ".", ".", ".", ".", "."],
+    [".", ".", ".", ".", ".", ".", ".", "."],
+    ["P", "P", "P", "P", "P", "P", "P", "P"],
+    ["R", "N", "B", "Q", "K", "B", "N", "R"]
+  ];
+}
+
+fn move_piece(board, from_row, from_col, to_row, to_col) {
+  let piece = board[from_row][from_col];
+  board[from_row][from_col] = ".";
+  board[to_row][to_col] = piece;
+}
+
+fn row_to_text(row) {
+  return join(row, " ");
+}
+
+fn print_board(board) {
+  let row = 0;
+  while row < len(board) {
+    println(row_to_text(board[row]));
+    row = row + 1;
+  }
+}
+
+fn play_opening(board) {
+  move_piece(board, 6, 4, 4, 4);
+  move_piece(board, 1, 4, 3, 4);
+  move_piece(board, 7, 6, 5, 5);
+  move_piece(board, 0, 1, 2, 2);
+  move_piece(board, 7, 5, 4, 2);
+  move_piece(board, 0, 5, 3, 2);
+}
+
+fn board_signature(board) {
+  return hash(board);
+}
+
+fn center_control(board) {
+  let total = 0;
+  if board[3][3] != "." {
+    total = total + 1;
+  }
+  if board[3][4] != "." {
+    total = total + 1;
+  }
+  if board[4][3] != "." {
+    total = total + 1;
+  }
+  if board[4][4] != "." {
+    total = total + 1;
+  }
+  return total;
+}
+
+fn reward_score(board) {
+  return (board_signature(board) % 1000) + (center_control(board) * 10);
+}
+
+fn run_demo() {
+  let board = new_board();
+  play_opening(board);
+  return board;
+}
+
+@test
+fn crypto_hash_changes_after_move() {
+  let board = new_board();
+  let before = board_signature(board);
+  move_piece(board, 6, 4, 4, 4);
+  let after = board_signature(board);
+  assert_eq(before == after, false);
+}
+
+@test
+fn opening_places_white_bishop_on_c4() {
+  let board = run_demo();
+  assert_eq(board[4][2], "B");
+}
