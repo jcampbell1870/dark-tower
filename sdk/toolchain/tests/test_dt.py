@@ -52,6 +52,11 @@ class DtCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("Crypto Chess opening demo", result.stdout)
 
+    def test_run_project_main_file_loads_full_project(self) -> None:
+        result = self.run_dt("run", str(CRYPTO_CHESS_PROJECT / "src" / "main.dt"))
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Crypto Chess opening demo", result.stdout)
+
     def test_build_sample_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact = Path(tmp_dir) / "hello.dtb"
@@ -184,6 +189,14 @@ fn main() {
             result = self.run_dt("run", str(source))
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, "5\nright\n")
+
+    def test_boolean_values_are_not_treated_as_integers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "bool-add.dt"
+            source.write_text('fn main() { println(to_string(true + 1)); }\n', encoding="utf-8")
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: '+' expects integers or strings", result.stderr)
 
     def test_for_loop_runs_through_bytecode_vm(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -854,6 +854,7 @@ class VirtualMachine:
         return self._execute_function(function, env)
 
     def _execute_function(self, function: BytecodeFunction, env: Environment) -> Any:
+        root_env = env
         stack: list[Any] = []
         ip = 0
         while ip < len(function.instructions):
@@ -947,7 +948,9 @@ class VirtualMachine:
             elif op == "BINARY_GE":
                 self._binary_compare(stack, ">=")
             elif op == "RETURN":
-                return stack.pop() if stack else None
+                value = stack.pop() if stack else None
+                env = root_env
+                return value
             else:
                 raise DtlError(f"unsupported instruction: {op}")
         return None
@@ -982,8 +985,8 @@ class VirtualMachine:
         if isinstance(left, list) and isinstance(right, list):
             stack.append(left + right)
             return
-        self._require_type(left, int, f"'{operator}' expects integers or strings")
-        self._require_type(right, int, f"'{operator}' expects integers or strings")
+        if type(left) is not int or type(right) is not int:
+            raise DtlError(f"'{operator}' expects integers or strings")
         stack.append(left + right)
 
     def _binary_integer(self, stack: list[Any], operator: str) -> None:
@@ -1209,7 +1212,7 @@ def load_program(path: Path, *, require_entry: bool = True, prefer_project: bool
 
 
 def load_artifacts(path: Path) -> LoadedArtifacts:
-    return _load_compiled_artifacts(path, require_entry=True, prefer_project=False)
+    return _load_compiled_artifacts(path, require_entry=True, prefer_project=True)
 
 
 def _find_project_root(start: Path, *, search_parents: bool) -> Path | None:
