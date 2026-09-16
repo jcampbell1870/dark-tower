@@ -149,17 +149,13 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: source file is not valid UTF-8", result.stderr)
 
-    def test_run_unreadable_source_fails(self) -> None:
+    def test_run_source_directory_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            source = Path(tmp_dir) / "unreadable.dt"
-            source.write_text('fn main() { print("ok\\n"); }', encoding="utf-8")
-            source.chmod(0)
-            try:
-                result = self.run_dt("run", str(source))
-            finally:
-                source.chmod(0o600)
+            source = Path(tmp_dir) / "source-dir"
+            source.mkdir()
+            result = self.run_dt("run", str(source))
             self.assertEqual(result.returncode, 1)
-            self.assertIn("error: unable to read source file", result.stderr)
+            self.assertIn("error: source path is not a file", result.stderr)
 
     def test_run_ignores_print_inside_string_literal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
