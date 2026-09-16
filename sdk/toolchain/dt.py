@@ -7,7 +7,7 @@ import re
 import sys
 from pathlib import Path
 
-PRINT_RE = re.compile(r'print\("((?:\\.|[^"\\])*)"\)\s*;')
+PRINT_START_RE = re.compile(r'print\("')
 
 
 class DtlError(Exception):
@@ -22,7 +22,40 @@ def _decode_string(value: str) -> str:
 
 
 def extract_prints(source: str) -> list[str]:
-    return [_decode_string(match.group(1)) for match in PRINT_RE.finditer(source)]
+    outputs: list[str] = []
+    position = 0
+
+    while True:
+        match = PRINT_START_RE.search(source, position)
+        if match is None:
+            break
+
+        literal_start = match.end()
+        index = literal_start
+
+        while index < len(source):
+            if source[index] == '"':
+                backslash_count = 0
+                lookback = index - 1
+                while lookback >= literal_start and source[lookback] == "\\":
+                    backslash_count += 1
+                    lookback -= 1
+
+                if backslash_count % 2 == 0:
+                    literal = source[literal_start:index]
+                    trailing = source[index + 1 :]
+                    trailing_match = re.match(r"\s*\)\s*;", trailing)
+                    if trailing_match is None:
+                        raise DtlError("invalid print statement syntax")
+                    outputs.append(_decode_string(literal))
+                    position = index + 1 + trailing_match.end()
+                    break
+
+            index += 1
+        else:
+            raise DtlError("unterminated string literal in print statement")
+
+    return outputs
 
 
 def read_source(path: Path) -> str:

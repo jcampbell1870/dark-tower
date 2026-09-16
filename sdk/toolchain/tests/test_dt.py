@@ -90,6 +90,15 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: invalid string literal", result.stderr)
 
+    def test_build_invalid_escape_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "invalid-escape.dt"
+            source.write_text('fn main() { print("bad\\q"); }', encoding="utf-8")
+            artifact = Path(tmp_dir) / "invalid-escape.dtb"
+            result = self.run_dt("build", str(source), "-o", str(artifact))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: invalid string literal", result.stderr)
+
     def test_build_output_directory_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "hello.dt"
