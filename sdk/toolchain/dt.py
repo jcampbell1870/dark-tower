@@ -15,7 +15,10 @@ class DtlError(Exception):
 
 
 def _decode_string(value: str) -> str:
-    return bytes(value, "utf-8").decode("unicode_escape")
+    try:
+        return json.loads(f'"{value}"')
+    except json.JSONDecodeError:
+        return value
 
 
 def extract_prints(source: str) -> list[str]:
