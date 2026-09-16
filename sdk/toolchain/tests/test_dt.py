@@ -116,6 +116,18 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: output path is not a regular file", result.stderr)
 
+    def test_build_output_parent_file_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "hello.dt"
+            source.write_text('fn main() { print("ok\\\\n"); }', encoding="utf-8")
+            blocked = Path(tmp_dir) / "blocked"
+            blocked.write_text("not a directory", encoding="utf-8")
+            output = blocked / "out.dtb"
+
+            result = self.run_dt("build", str(source), "-o", str(output))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: unable to write output file", result.stderr)
+
     def test_run_accepts_print_whitespace_variants(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "whitespace.dt"

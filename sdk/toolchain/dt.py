@@ -125,9 +125,9 @@ def build_command(source_path: Path, output_path: Path) -> int:
     if output_path.exists() and not output_path.is_file():
         raise DtlError(f"output path is not a regular file: {output_path}")
     output_parent = output_path.parent
-    if output_parent != Path("."):
-        output_parent.mkdir(parents=True, exist_ok=True)
     try:
+        if output_parent != Path("."):
+            output_parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
     except OSError as exc:
         raise DtlError(f"unable to write output file: {output_path}") from exc
