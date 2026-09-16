@@ -17,8 +17,8 @@ class DtlError(Exception):
 def _decode_string(value: str) -> str:
     try:
         return json.loads(f'"{value}"')
-    except json.JSONDecodeError:
-        return value
+    except json.JSONDecodeError as exc:
+        raise DtlError(f"invalid string literal: {value}") from exc
 
 
 def extract_prints(source: str) -> list[str]:
@@ -30,7 +30,10 @@ def read_source(path: Path) -> str:
         raise DtlError(f"source file not found: {path}")
     if not path.is_file():
         raise DtlError(f"source path is not a file: {path}")
-    return path.read_text(encoding="utf-8")
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise DtlError(f"source file is not valid UTF-8: {path}") from exc
 
 
 def run_command(source_path: Path) -> int:
@@ -53,8 +56,13 @@ def build_command(source_path: Path, output_path: Path) -> int:
         "source": str(source_path),
         "prints": outputs,
     }
+    if output_path.exists() and output_path.is_dir():
+        raise DtlError(f"output path is a directory: {output_path}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+    try:
+        output_path.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        raise DtlError(f"unable to write output file: {output_path}") from exc
     return 0
 
 

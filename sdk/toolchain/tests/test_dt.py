@@ -74,6 +74,41 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: no runnable output found", result.stderr)
 
+    def test_run_escaped_string_literals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "escaped.dt"
+            source.write_text('fn main() { print("line1\\nline2\\"ok\\"\\n"); }', encoding="utf-8")
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, 'line1\nline2"ok"\n')
+
+    def test_run_invalid_escape_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "invalid-escape.dt"
+            source.write_text('fn main() { print("bad\\q"); }', encoding="utf-8")
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: invalid string literal", result.stderr)
+
+    def test_build_output_directory_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "hello.dt"
+            source.write_text('fn main() { print("ok\\\\n"); }', encoding="utf-8")
+            output_dir = Path(tmp_dir) / "artifact-dir"
+            output_dir.mkdir()
+
+            result = self.run_dt("build", str(source), "-o", str(output_dir))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: output path is a directory", result.stderr)
+
+    def test_run_non_utf8_source_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "non-utf8.dt"
+            source.write_bytes(b'fn main() { print("' + bytes([0xFF]) + b'"); }')
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: source file is not valid UTF-8", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
