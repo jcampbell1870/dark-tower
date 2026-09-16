@@ -88,6 +88,9 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(payload["functions"], ["main"])
             self.assertEqual(payload["source"], str(HELLO_PROJECT.resolve()))
             self.assertEqual(payload["target"], "linux-x64")
+            self.assertEqual(payload["entry"], str((HELLO_PROJECT / "main.dt").resolve()))
+            self.assertEqual(payload["sources"], [str((HELLO_PROJECT / "main.dt").resolve())])
+            self.assertEqual(payload["tests"], [])
             self.assertIn("bytecode", payload)
             self.assertIn("main", payload["bytecode"])
             self.assertEqual(payload["bytecode"]["main"]["params"], [])
@@ -101,6 +104,8 @@ class DtCliTests(unittest.TestCase):
             payload = json.loads(artifact.read_text(encoding="utf-8"))
             self.assertEqual(payload["package"]["name"], "crypto-chess")
             self.assertIn("run_demo", payload["bytecode"])
+            self.assertEqual(payload["entry"], str((CRYPTO_CHESS_PROJECT / "src" / "main.dt").resolve()))
+            self.assertEqual(sorted(payload["tests"]), ["crypto_hash_changes_after_move", "opening_places_white_bishop_on_c4"])
 
     def test_run_interpreted_language_features(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

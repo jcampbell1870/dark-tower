@@ -1206,17 +1206,12 @@ def load_program(path: Path, *, require_entry: bool = True, prefer_project: bool
         if candidate.name == "DarkTower.toml":
             return _load_project(candidate.parent, require_entry=require_entry)
         if candidate.suffix == ".dt":
-            return _load_file(candidate)
+            return _load_file(candidate, require_entry=require_entry)
         raise DtlError(f"project path not found: {candidate}")
     if candidate.is_file() and candidate.name == "DarkTower.toml":
         return _load_project(candidate.resolve().parent, require_entry=require_entry)
     if candidate.is_file():
-        resolved = candidate.resolve()
-        if prefer_project:
-            project_root = _find_project_root(resolved.parent, search_parents=True)
-            if project_root is not None:
-                return _load_project(project_root, require_entry=require_entry)
-        return _load_file(resolved)
+        return _load_file(candidate.resolve(), require_entry=require_entry)
     if candidate.is_dir():
         project_root = _find_project_root(candidate.resolve(), search_parents=True)
         if project_root is None:
@@ -1290,11 +1285,14 @@ def _load_project(project_root: Path, *, require_entry: bool = True) -> LoadResu
     return LoadResult(program=program, project_root=project_root)
 
 
-def _load_file(source_path: Path) -> LoadResult:
+def _load_file(source_path: Path, *, require_entry: bool = True) -> LoadResult:
     if not source_path.exists():
         raise DtlError(f"source file not found: {source_path}")
     if not source_path.is_file():
         raise DtlError(f"source path is not a file: {source_path}")
+    project_root = _find_project_root(source_path.resolve().parent, search_parents=True)
+    if project_root is not None:
+        return _load_project(project_root, require_entry=require_entry)
     program = _parse_sources([source_path], manifest=None, entry_source=source_path)
     return LoadResult(program=program, project_root=None)
 
