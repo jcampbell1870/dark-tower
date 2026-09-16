@@ -1,9 +1,6 @@
 # Dark Tower CLI Toolchain
 
-Placeholder directory for:
+Prototype implementation:
 
-- Parser front-end
-- Type checker
-- Intermediate representation
-- Code generator
-- Linker/packaging integration
+- `dt.py` provides `dt run <path>` and `dt build <path> -o <output>`
+- `tests/test_dt.py` verifies CLI help, run, and build behavior
