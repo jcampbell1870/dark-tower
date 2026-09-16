@@ -24,7 +24,7 @@ fn main() {
 
 ## Implemented Prototype Subset
 
-The current runtime executes a practical subset of DTL:
+The current runtime compiles and executes a practical bytecode-backed subset of DTL:
 
 - top-level `fn` declarations
 - integers, booleans, strings, and lists
@@ -32,6 +32,7 @@ The current runtime executes a practical subset of DTL:
 - builtin helpers: `print`, `println`, `len`, `join`, `push`, `pop`, `clone`, `hash`, `to_string`, and `assert_eq`
 - multi-file project loading through `DarkTower.toml`, with `src/main.dt` as the entry module and every `src/**/*.dt` file loaded into the program
 - test discovery for functions marked with the `@test` decorator across loaded project sources
+- bytecode compilation plus VM execution for `dt run`, `dt test`, and build artifacts
 
 Features documented later in this manual that go beyond this subset remain part of the broader language design rather than the current runtime implementation.
 

@@ -7,7 +7,7 @@ Dark Tower is a new computing platform initiative that includes:
 - **Dark Tower Browser (DTB)**: a built-in secure web browser platform
 - **Dark Tower Console**: a game-system profile and SDK strategy
 
-> This repository now contains the **v0.3 prototype foundation**: language specification, programming manual, architecture documents, SDK starter layout, website, downloadable starter artifacts, and a runnable `dt` CLI with a small interpreted DTL subset.
+> This repository now contains the **v0.4 bytecode prototype foundation**: language specification, programming manual, architecture documents, SDK starter layout, website, downloadable starter artifacts, and a runnable `dt` CLI with a small compiled-to-bytecode DTL subset and VM.
 
 ## Quick Links
 
@@ -31,6 +31,7 @@ The prototype runtime now supports:
 - `let`, assignment, `if/else`, `while`, `for`, and `return`
 - builtin helpers including `print`, `println`, `len`, `join`, `push`, `pop`, `clone`, `hash`, `to_string`, and `assert_eq`
 - multi-file project loading from `src/**/*.dt`
+- bytecode IR compilation and VM execution for `run` and `test`
 
 ## Sample Applications
 
@@ -43,6 +44,7 @@ Run them with:
 ./dt run samples/hello
 ./dt run samples/crypto-chess
 ./dt test samples/crypto-chess
+./dt build samples/crypto-chess -o build/crypto-chess.dtb
 ```
 
 ## Repository Layout

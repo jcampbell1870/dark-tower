@@ -19,11 +19,6 @@ class DtlError(Exception):
     pass
 
 
-class ReturnSignal(Exception):
-    def __init__(self, value: Any) -> None:
-        self.value = value
-
-
 @dataclass
 class Token:
     kind: str
@@ -138,6 +133,30 @@ class ListExpr(Expr):
 class IndexExpr(Expr):
     collection: Expr
     index: Expr
+
+
+@dataclass
+class Instruction:
+    op: str
+    arg: Any | None = None
+
+
+@dataclass
+class BytecodeFunction:
+    name: str
+    params: list[str]
+    instructions: list[Instruction]
+    decorators: list[str]
+    source: str
+
+
+@dataclass
+class CompiledProgram:
+    functions: dict[str, BytecodeFunction]
+    tests: list[str]
+    manifest: dict[str, Any] | None = None
+    sources: list[Path] = field(default_factory=list)
+    entry_source: Path | None = None
 
 
 class Lexer:
@@ -591,14 +610,223 @@ class Environment:
         raise DtlError(f"undefined variable: {name}")
 
 
-class Interpreter:
-    def __init__(self, program: Program) -> None:
+class BytecodeCompiler:
+    def __init__(self) -> None:
+        self.temp_counter = 0
+        self.instructions: list[Instruction] = []
+
+    def compile_program(self, program: Program) -> CompiledProgram:
+        functions: dict[str, BytecodeFunction] = {}
+        for name, function in program.functions.items():
+            functions[name] = self.compile_function(function)
+        return CompiledProgram(
+            functions=functions,
+            tests=list(program.tests),
+            manifest=program.manifest,
+            sources=list(program.sources),
+            entry_source=program.entry_source,
+        )
+
+    def compile_function(self, function: FunctionDecl) -> BytecodeFunction:
+        self.instructions = []
+        for statement in function.body:
+            self._compile_statement(statement)
+        self._emit("PUSH_CONST", None)
+        self._emit("RETURN")
+        return BytecodeFunction(
+            name=function.name,
+            params=list(function.params),
+            instructions=list(self.instructions),
+            decorators=list(function.decorators),
+            source=function.source,
+        )
+
+    def _compile_statement(self, statement: Stmt) -> None:
+        if isinstance(statement, LetStmt):
+            if statement.initializer is None:
+                self._emit("PUSH_CONST", None)
+            else:
+                self._compile_expr(statement.initializer)
+            self._emit("DEF_NAME", statement.name)
+            return
+        if isinstance(statement, AssignStmt):
+            if isinstance(statement.target, VariableExpr):
+                self._compile_expr(statement.value)
+                self._emit("STORE_NAME", statement.target.name)
+                return
+            if isinstance(statement.target, IndexExpr):
+                self._compile_expr(statement.target.collection)
+                self._compile_expr(statement.target.index)
+                self._compile_expr(statement.value)
+                self._emit("INDEX_SET")
+                return
+            raise DtlError("invalid assignment target")
+        if isinstance(statement, ExprStmt):
+            self._compile_expr(statement.expr)
+            self._emit("POP")
+            return
+        if isinstance(statement, IfStmt):
+            self._compile_expr(statement.condition)
+            jump_to_else = self._emit("JUMP_IF_FALSE_POP", None)
+            self._emit("PUSH_SCOPE")
+            self._compile_block(statement.then_branch)
+            self._emit("POP_SCOPE")
+            if statement.else_branch is None:
+                self._patch(jump_to_else, len(self.instructions))
+                return
+            jump_to_end = self._emit("JUMP", None)
+            self._patch(jump_to_else, len(self.instructions))
+            self._emit("PUSH_SCOPE")
+            self._compile_block(statement.else_branch)
+            self._emit("POP_SCOPE")
+            self._patch(jump_to_end, len(self.instructions))
+            return
+        if isinstance(statement, WhileStmt):
+            loop_start = len(self.instructions)
+            self._compile_expr(statement.condition)
+            jump_to_end = self._emit("JUMP_IF_FALSE_POP", None)
+            self._emit("PUSH_SCOPE")
+            self._compile_block(statement.body)
+            self._emit("POP_SCOPE")
+            self._emit("JUMP", loop_start)
+            self._patch(jump_to_end, len(self.instructions))
+            return
+        if isinstance(statement, ForStmt):
+            iterable_name = self._temp_name("iter")
+            index_name = self._temp_name("index")
+            self._compile_expr(statement.iterable)
+            self._emit("DEF_NAME", iterable_name)
+            self._emit("PUSH_CONST", 0)
+            self._emit("DEF_NAME", index_name)
+            loop_start = len(self.instructions)
+            self._emit("LOAD_NAME", index_name)
+            self._emit("LOAD_NAME", iterable_name)
+            self._emit("CALL_NAME", {"name": "len", "argc": 1})
+            self._emit("BINARY_LT")
+            jump_to_end = self._emit("JUMP_IF_FALSE_POP", None)
+            self._emit("PUSH_SCOPE")
+            self._emit("LOAD_NAME", iterable_name)
+            self._emit("LOAD_NAME", index_name)
+            self._emit("INDEX_GET")
+            self._emit("DEF_NAME", statement.name)
+            self._compile_block(statement.body)
+            self._emit("POP_SCOPE")
+            self._emit("LOAD_NAME", index_name)
+            self._emit("PUSH_CONST", 1)
+            self._emit("BINARY_ADD")
+            self._emit("STORE_NAME", index_name)
+            self._emit("JUMP", loop_start)
+            self._patch(jump_to_end, len(self.instructions))
+            return
+        if isinstance(statement, ReturnStmt):
+            if statement.value is None:
+                self._emit("PUSH_CONST", None)
+            else:
+                self._compile_expr(statement.value)
+            self._emit("RETURN")
+            return
+        raise DtlError(f"unsupported statement: {statement!r}")
+
+    def _compile_block(self, statements: list[Stmt]) -> None:
+        for statement in statements:
+            self._compile_statement(statement)
+
+    def _compile_expr(self, expr: Expr) -> None:
+        if isinstance(expr, LiteralExpr):
+            self._emit("PUSH_CONST", expr.value)
+            return
+        if isinstance(expr, VariableExpr):
+            self._emit("LOAD_NAME", expr.name)
+            return
+        if isinstance(expr, UnaryExpr):
+            self._compile_expr(expr.operand)
+            if expr.operator == "!":
+                self._emit("UNARY_NOT")
+                return
+            if expr.operator == "-":
+                self._emit("UNARY_NEG")
+                return
+            raise DtlError(f"unsupported unary operator: {expr.operator}")
+        if isinstance(expr, BinaryExpr):
+            self._compile_binary(expr)
+            return
+        if isinstance(expr, CallExpr):
+            if not isinstance(expr.callee, VariableExpr):
+                raise DtlError("call target must be a function name")
+            for arg in expr.args:
+                self._compile_expr(arg)
+            self._emit("CALL_NAME", {"name": expr.callee.name, "argc": len(expr.args)})
+            return
+        if isinstance(expr, ListExpr):
+            for item in expr.items:
+                self._compile_expr(item)
+            self._emit("MAKE_LIST", len(expr.items))
+            return
+        if isinstance(expr, IndexExpr):
+            self._compile_expr(expr.collection)
+            self._compile_expr(expr.index)
+            self._emit("INDEX_GET")
+            return
+        raise DtlError(f"unsupported expression: {expr!r}")
+
+    def _compile_binary(self, expr: BinaryExpr) -> None:
+        if expr.operator == "&&":
+            self._compile_expr(expr.left)
+            self._emit("DUP")
+            jump_to_end = self._emit("JUMP_IF_FALSE_POP", None)
+            self._emit("POP")
+            self._compile_expr(expr.right)
+            self._patch(jump_to_end, len(self.instructions))
+            return
+        if expr.operator == "||":
+            self._compile_expr(expr.left)
+            self._emit("DUP")
+            jump_to_right = self._emit("JUMP_IF_FALSE_POP", None)
+            jump_to_end = self._emit("JUMP", None)
+            self._patch(jump_to_right, len(self.instructions))
+            self._emit("POP")
+            self._compile_expr(expr.right)
+            self._patch(jump_to_end, len(self.instructions))
+            return
+        self._compile_expr(expr.left)
+        self._compile_expr(expr.right)
+        opcode = {
+            "+": "BINARY_ADD",
+            "-": "BINARY_SUB",
+            "*": "BINARY_MUL",
+            "/": "BINARY_DIV",
+            "%": "BINARY_MOD",
+            "==": "BINARY_EQ",
+            "!=": "BINARY_NE",
+            "<": "BINARY_LT",
+            "<=": "BINARY_LE",
+            ">": "BINARY_GT",
+            ">=": "BINARY_GE",
+        }.get(expr.operator)
+        if opcode is None:
+            raise DtlError(f"unsupported operator: {expr.operator}")
+        self._emit(opcode)
+
+    def _emit(self, op: str, arg: Any | None = None) -> int:
+        self.instructions.append(Instruction(op, arg))
+        return len(self.instructions) - 1
+
+    def _patch(self, index: int, target: int) -> None:
+        self.instructions[index].arg = target
+
+    def _temp_name(self, label: str) -> str:
+        self.temp_counter += 1
+        return f"__dt_{label}_{self.temp_counter}"
+
+
+class VirtualMachine:
+    def __init__(self, program: CompiledProgram) -> None:
         self.program = program
 
     def run_main(self) -> int:
         if "main" not in self.program.functions:
             raise DtlError("missing entry function: main")
-        self._call_function("main", [])
+        self.call_function("main", [])
         return 0
 
     def run_tests(self) -> int:
@@ -606,7 +834,7 @@ class Interpreter:
         passed = 0
         for name in self.program.tests:
             try:
-                self._call_function(name, [])
+                self.call_function(name, [])
                 passed += 1
                 print(f"ok {name}")
             except DtlError as exc:
@@ -614,7 +842,7 @@ class Interpreter:
         print(f"{passed}/{total} tests passed")
         return 0 if passed == total else 1
 
-    def _call_function(self, name: str, args: list[Any]) -> Any:
+    def call_function(self, name: str, args: list[Any]) -> Any:
         function = self.program.functions.get(name)
         if function is None:
             raise DtlError(f"undefined function: {name}")
@@ -623,162 +851,174 @@ class Interpreter:
         env = Environment()
         for param, arg in zip(function.params, args):
             env.define(param, arg)
-        try:
-            self._execute_block(function.body, env)
-        except ReturnSignal as signal:
-            return signal.value
+        return self._execute_function(function, env)
+
+    def _execute_function(self, function: BytecodeFunction, env: Environment) -> Any:
+        stack: list[Any] = []
+        ip = 0
+        while ip < len(function.instructions):
+            instruction = function.instructions[ip]
+            ip += 1
+            op = instruction.op
+            arg = instruction.arg
+
+            if op == "PUSH_CONST":
+                stack.append(_deep_clone(arg))
+            elif op == "LOAD_NAME":
+                stack.append(env.get(str(arg)))
+            elif op == "DEF_NAME":
+                env.define(str(arg), stack.pop())
+            elif op == "STORE_NAME":
+                env.assign(str(arg), stack.pop())
+            elif op == "POP":
+                if not stack:
+                    raise DtlError("stack underflow")
+                stack.pop()
+            elif op == "DUP":
+                if not stack:
+                    raise DtlError("stack underflow")
+                stack.append(stack[-1])
+            elif op == "PUSH_SCOPE":
+                env = Environment(env)
+            elif op == "POP_SCOPE":
+                if env.parent is None:
+                    raise DtlError("cannot exit root scope")
+                env = env.parent
+            elif op == "JUMP":
+                ip = int(arg)
+            elif op == "JUMP_IF_FALSE_POP":
+                condition = stack.pop()
+                if not self._is_truthy(condition):
+                    ip = int(arg)
+            elif op == "CALL_NAME":
+                call_spec = dict(arg)
+                argc = int(call_spec["argc"])
+                name = str(call_spec["name"])
+                values = [stack.pop() for _ in range(argc)]
+                values.reverse()
+                stack.append(self._call_value(name, values))
+            elif op == "MAKE_LIST":
+                count = int(arg)
+                if count == 0:
+                    stack.append([])
+                else:
+                    items = stack[-count:]
+                    del stack[-count:]
+                    stack.append(items)
+            elif op == "INDEX_GET":
+                index = stack.pop()
+                collection = stack.pop()
+                stack.append(self._index_get(collection, index))
+            elif op == "INDEX_SET":
+                value = stack.pop()
+                index = stack.pop()
+                collection = stack.pop()
+                self._index_set(collection, index, value)
+            elif op == "UNARY_NOT":
+                stack.append(not self._is_truthy(stack.pop()))
+            elif op == "UNARY_NEG":
+                value = stack.pop()
+                self._require_type(value, int, "unary '-' expects an integer")
+                stack.append(-value)
+            elif op == "BINARY_ADD":
+                self._binary_numeric_or_string(stack, "+")
+            elif op == "BINARY_SUB":
+                self._binary_integer(stack, "-")
+            elif op == "BINARY_MUL":
+                self._binary_integer(stack, "*")
+            elif op == "BINARY_DIV":
+                self._binary_integer(stack, "/")
+            elif op == "BINARY_MOD":
+                self._binary_integer(stack, "%")
+            elif op == "BINARY_EQ":
+                right = stack.pop()
+                left = stack.pop()
+                stack.append(left == right)
+            elif op == "BINARY_NE":
+                right = stack.pop()
+                left = stack.pop()
+                stack.append(left != right)
+            elif op == "BINARY_LT":
+                self._binary_compare(stack, "<")
+            elif op == "BINARY_LE":
+                self._binary_compare(stack, "<=")
+            elif op == "BINARY_GT":
+                self._binary_compare(stack, ">")
+            elif op == "BINARY_GE":
+                self._binary_compare(stack, ">=")
+            elif op == "RETURN":
+                return stack.pop() if stack else None
+            else:
+                raise DtlError(f"unsupported instruction: {op}")
         return None
 
-    def _execute_block(self, statements: list[Stmt], env: Environment) -> None:
-        for statement in statements:
-            self._execute_statement(statement, env)
-
-    def _execute_statement(self, statement: Stmt, env: Environment) -> None:
-        if isinstance(statement, LetStmt):
-            value = self._evaluate(statement.initializer, env) if statement.initializer is not None else None
-            env.define(statement.name, value)
-            return
-        if isinstance(statement, AssignStmt):
-            value = self._evaluate(statement.value, env)
-            self._assign(statement.target, value, env)
-            return
-        if isinstance(statement, ExprStmt):
-            self._evaluate(statement.expr, env)
-            return
-        if isinstance(statement, IfStmt):
-            if self._is_truthy(self._evaluate(statement.condition, env)):
-                self._execute_block(statement.then_branch, Environment(env))
-            elif statement.else_branch is not None:
-                self._execute_block(statement.else_branch, Environment(env))
-            return
-        if isinstance(statement, WhileStmt):
-            while self._is_truthy(self._evaluate(statement.condition, env)):
-                self._execute_block(statement.body, Environment(env))
-            return
-        if isinstance(statement, ForStmt):
-            iterable = self._evaluate(statement.iterable, env)
-            if not isinstance(iterable, (list, str)):
-                raise DtlError("for-loop expects a list or string")
-            for item in iterable:
-                loop_env = Environment(env)
-                loop_env.define(statement.name, item)
-                self._execute_block(statement.body, loop_env)
-            return
-        if isinstance(statement, ReturnStmt):
-            raise ReturnSignal(self._evaluate(statement.value, env) if statement.value is not None else None)
-        raise DtlError(f"unsupported statement: {statement!r}")
-
-    def _assign(self, target: Expr, value: Any, env: Environment) -> None:
-        if isinstance(target, VariableExpr):
-            env.assign(target.name, value)
-            return
-        if isinstance(target, IndexExpr):
-            collection = self._evaluate(target.collection, env)
-            index = self._evaluate(target.index, env)
-            if not isinstance(index, int):
-                raise DtlError("index must be an integer")
-            if not isinstance(collection, list):
-                raise DtlError("indexed assignment requires a list")
-            try:
-                collection[index] = value
-            except IndexError as exc:
-                raise DtlError("list index out of range") from exc
-            return
-        raise DtlError("invalid assignment target")
-
-    def _evaluate(self, expr: Expr | None, env: Environment) -> Any:
-        if expr is None:
-            return None
-        if isinstance(expr, LiteralExpr):
-            return expr.value
-        if isinstance(expr, VariableExpr):
-            return env.get(expr.name)
-        if isinstance(expr, UnaryExpr):
-            value = self._evaluate(expr.operand, env)
-            if expr.operator == "!":
-                return not self._is_truthy(value)
-            if expr.operator == "-":
-                self._require_type(value, int, "unary '-' expects an integer")
-                return -value
-            raise DtlError(f"unsupported unary operator: {expr.operator}")
-        if isinstance(expr, BinaryExpr):
-            return self._evaluate_binary(expr, env)
-        if isinstance(expr, CallExpr):
-            return self._evaluate_call(expr, env)
-        if isinstance(expr, ListExpr):
-            return [self._evaluate(item, env) for item in expr.items]
-        if isinstance(expr, IndexExpr):
-            collection = self._evaluate(expr.collection, env)
-            index = self._evaluate(expr.index, env)
-            self._require_type(index, int, "index must be an integer")
-            try:
-                return collection[index]
-            except (IndexError, TypeError) as exc:
-                raise DtlError("invalid index access") from exc
-        raise DtlError(f"unsupported expression: {expr!r}")
-
-    def _evaluate_binary(self, expr: BinaryExpr, env: Environment) -> Any:
-        if expr.operator == "&&":
-            left = self._evaluate(expr.left, env)
-            return self._evaluate(expr.right, env) if self._is_truthy(left) else left
-        if expr.operator == "||":
-            left = self._evaluate(expr.left, env)
-            return left if self._is_truthy(left) else self._evaluate(expr.right, env)
-
-        left = self._evaluate(expr.left, env)
-        right = self._evaluate(expr.right, env)
-        operator = expr.operator
-
-        if operator == "+":
-            if isinstance(left, str) or isinstance(right, str):
-                return self._to_string(left) + self._to_string(right)
-            if isinstance(left, list) and isinstance(right, list):
-                return left + right
-            self._require_type(left, int, "'+' expects integers or strings")
-            self._require_type(right, int, "'+' expects integers or strings")
-            return left + right
-        if operator == "-":
-            self._require_type(left, int, "'-' expects integers")
-            self._require_type(right, int, "'-' expects integers")
-            return left - right
-        if operator == "*":
-            self._require_type(left, int, "'*' expects integers")
-            self._require_type(right, int, "'*' expects integers")
-            return left * right
-        if operator == "/":
-            self._require_type(left, int, "'/' expects integers")
-            self._require_type(right, int, "'/' expects integers")
-            if right == 0:
-                raise DtlError("division by zero")
-            return left // right
-        if operator == "%":
-            self._require_type(left, int, "'%' expects integers")
-            self._require_type(right, int, "'%' expects integers")
-            if right == 0:
-                raise DtlError("modulo by zero")
-            return left % right
-        if operator in {"<", "<=", ">", ">="}:
-            self._require_comparable(left, right)
-            return {
-                "<": left < right,
-                "<=": left <= right,
-                ">": left > right,
-                ">=": left >= right,
-            }[operator]
-        if operator == "==":
-            return left == right
-        if operator == "!=":
-            return left != right
-        raise DtlError(f"unsupported operator: {operator}")
-
-    def _evaluate_call(self, expr: CallExpr, env: Environment) -> Any:
-        if not isinstance(expr.callee, VariableExpr):
-            raise DtlError("call target must be a function name")
-        name = expr.callee.name
-        args = [self._evaluate(arg, env) for arg in expr.args]
+    def _call_value(self, name: str, args: list[Any]) -> Any:
         if name in BUILTINS:
             return BUILTINS[name](self, args)
-        return self._call_function(name, args)
+        return self.call_function(name, args)
+
+    def _index_get(self, collection: Any, index: Any) -> Any:
+        self._require_type(index, int, "index must be an integer")
+        try:
+            return collection[index]
+        except (IndexError, TypeError) as exc:
+            raise DtlError("invalid index access") from exc
+
+    def _index_set(self, collection: Any, index: Any, value: Any) -> None:
+        self._require_type(index, int, "index must be an integer")
+        if not isinstance(collection, list):
+            raise DtlError("indexed assignment requires a list")
+        try:
+            collection[index] = value
+        except IndexError as exc:
+            raise DtlError("list index out of range") from exc
+
+    def _binary_numeric_or_string(self, stack: list[Any], operator: str) -> None:
+        right = stack.pop()
+        left = stack.pop()
+        if isinstance(left, str) or isinstance(right, str):
+            stack.append(self._to_string(left) + self._to_string(right))
+            return
+        if isinstance(left, list) and isinstance(right, list):
+            stack.append(left + right)
+            return
+        self._require_type(left, int, f"'{operator}' expects integers or strings")
+        self._require_type(right, int, f"'{operator}' expects integers or strings")
+        stack.append(left + right)
+
+    def _binary_integer(self, stack: list[Any], operator: str) -> None:
+        right = stack.pop()
+        left = stack.pop()
+        self._require_type(left, int, f"'{operator}' expects integers")
+        self._require_type(right, int, f"'{operator}' expects integers")
+        if operator == "-":
+            stack.append(left - right)
+            return
+        if operator == "*":
+            stack.append(left * right)
+            return
+        if operator == "/":
+            if right == 0:
+                raise DtlError("division by zero")
+            stack.append(left // right)
+            return
+        if operator == "%":
+            if right == 0:
+                raise DtlError("modulo by zero")
+            stack.append(left % right)
+            return
+        raise DtlError(f"unsupported integer operator: {operator}")
+
+    def _binary_compare(self, stack: list[Any], operator: str) -> None:
+        right = stack.pop()
+        left = stack.pop()
+        self._require_comparable(left, right)
+        stack.append({
+            "<": left < right,
+            "<=": left <= right,
+            ">": left > right,
+            ">=": left >= right,
+        }[operator])
 
     def _is_truthy(self, value: Any) -> bool:
         return bool(value)
@@ -823,17 +1063,17 @@ class Interpreter:
             raise DtlError("comparison supports integers and strings only")
 
 
-def builtin_print(interpreter: Interpreter, args: list[Any]) -> None:
-    sys.stdout.write("".join(interpreter._to_string(arg) for arg in args))
+def builtin_print(vm: VirtualMachine, args: list[Any]) -> None:
+    sys.stdout.write("".join(vm._to_string(arg) for arg in args))
     return None
 
 
-def builtin_println(interpreter: Interpreter, args: list[Any]) -> None:
-    sys.stdout.write("".join(interpreter._to_string(arg) for arg in args) + "\n")
+def builtin_println(vm: VirtualMachine, args: list[Any]) -> None:
+    sys.stdout.write("".join(vm._to_string(arg) for arg in args) + "\n")
     return None
 
 
-def builtin_len(_: Interpreter, args: list[Any]) -> int:
+def builtin_len(_: VirtualMachine, args: list[Any]) -> int:
     _expect_arity("len", args, 1)
     value = args[0]
     if not isinstance(value, (list, str)):
@@ -841,14 +1081,14 @@ def builtin_len(_: Interpreter, args: list[Any]) -> int:
     return len(value)
 
 
-def builtin_assert_eq(_: Interpreter, args: list[Any]) -> None:
+def builtin_assert_eq(_: VirtualMachine, args: list[Any]) -> None:
     _expect_arity("assert_eq", args, 2)
     if args[0] != args[1]:
         raise DtlError(f"assert_eq failed: expected {args[1]!r}, got {args[0]!r}")
     return None
 
 
-def builtin_push(_: Interpreter, args: list[Any]) -> None:
+def builtin_push(_: VirtualMachine, args: list[Any]) -> None:
     _expect_arity("push", args, 2)
     target = args[0]
     if not isinstance(target, list):
@@ -857,7 +1097,7 @@ def builtin_push(_: Interpreter, args: list[Any]) -> None:
     return None
 
 
-def builtin_pop(_: Interpreter, args: list[Any]) -> Any:
+def builtin_pop(_: VirtualMachine, args: list[Any]) -> Any:
     _expect_arity("pop", args, 1)
     target = args[0]
     if not isinstance(target, list):
@@ -867,25 +1107,25 @@ def builtin_pop(_: Interpreter, args: list[Any]) -> Any:
     return target.pop()
 
 
-def builtin_to_string(interpreter: Interpreter, args: list[Any]) -> str:
+def builtin_to_string(vm: VirtualMachine, args: list[Any]) -> str:
     _expect_arity("to_string", args, 1)
-    return interpreter._to_string(args[0])
+    return vm._to_string(args[0])
 
 
-def builtin_join(interpreter: Interpreter, args: list[Any]) -> str:
+def builtin_join(vm: VirtualMachine, args: list[Any]) -> str:
     _expect_arity("join", args, 2)
     items, separator = args
     if not isinstance(items, list) or not isinstance(separator, str):
         raise DtlError("join expects (list, string)")
-    return separator.join(interpreter._to_string(item) for item in items)
+    return separator.join(vm._to_string(item) for item in items)
 
 
-def builtin_hash(interpreter: Interpreter, args: list[Any]) -> int:
+def builtin_hash(vm: VirtualMachine, args: list[Any]) -> int:
     _expect_arity("hash", args, 1)
-    return interpreter._stable_hash(args[0])
+    return vm._stable_hash(args[0])
 
 
-def builtin_clone(_: Interpreter, args: list[Any]) -> Any:
+def builtin_clone(_: VirtualMachine, args: list[Any]) -> Any:
     _expect_arity("clone", args, 1)
     return _deep_clone(args[0])
 
@@ -934,6 +1174,14 @@ class LoadResult:
     project_root: Path | None
 
 
+@dataclass
+class LoadedArtifacts:
+    source: Path
+    project_root: Path | None
+    program: Program
+    bytecode: CompiledProgram
+
+
 def load_program(path: Path) -> LoadResult:
     candidate = path.expanduser()
     if not candidate.exists():
@@ -951,6 +1199,13 @@ def load_program(path: Path) -> LoadResult:
             raise DtlError(f"project root not found: {candidate.resolve()}")
         return _load_project(project_root)
     return _load_file(candidate.resolve())
+
+
+def load_artifacts(path: Path) -> LoadedArtifacts:
+    load_result = load_program(path)
+    source = path.expanduser().resolve()
+    bytecode = BytecodeCompiler().compile_program(load_result.program)
+    return LoadedArtifacts(source=source, project_root=load_result.project_root, program=load_result.program, bytecode=bytecode)
 
 
 def _find_project_root(start: Path) -> Path | None:
@@ -1003,7 +1258,6 @@ def _load_project(project_root: Path) -> LoadResult:
     return LoadResult(program=program, project_root=project_root)
 
 
-
 def _load_file(source_path: Path) -> LoadResult:
     if not source_path.exists():
         raise DtlError(f"source file not found: {source_path}")
@@ -1011,7 +1265,6 @@ def _load_file(source_path: Path) -> LoadResult:
         raise DtlError(f"source path is not a file: {source_path}")
     program = _parse_sources([source_path], manifest=None, entry_source=source_path)
     return LoadResult(program=program, project_root=source_path.parent)
-
 
 
 def _parse_sources(source_paths: list[Path], manifest: dict[str, Any] | None, entry_source: Path | None) -> Program:
@@ -1030,38 +1283,52 @@ def _parse_sources(source_paths: list[Path], manifest: dict[str, Any] | None, en
     return Program(functions=functions, tests=tests, manifest=manifest, sources=source_paths, entry_source=entry_source)
 
 
-
 def run_command(source_path: Path) -> int:
-    load_result = load_program(source_path)
-    interpreter = Interpreter(load_result.program)
-    return interpreter.run_main()
-
+    loaded = load_artifacts(source_path)
+    vm = VirtualMachine(loaded.bytecode)
+    return vm.run_main()
 
 
 def test_command(source_path: Path) -> int:
-    load_result = load_program(source_path)
-    interpreter = Interpreter(load_result.program)
-    return interpreter.run_tests()
+    loaded = load_artifacts(source_path)
+    vm = VirtualMachine(loaded.bytecode)
+    return vm.run_tests()
 
+
+def serialize_bytecode(program: CompiledProgram) -> dict[str, Any]:
+    return {
+        name: {
+            "params": function.params,
+            "decorators": function.decorators,
+            "source": function.source,
+            "instructions": [
+                {"op": instruction.op, "arg": instruction.arg}
+                for instruction in function.instructions
+            ],
+        }
+        for name, function in sorted(program.functions.items())
+    }
 
 
 def build_command(source_path: Path, output_path: Path, target: str) -> int:
-    load_result = load_program(source_path)
-    program = load_result.program
-    if "main" not in program.functions:
+    loaded = load_artifacts(source_path)
+    program = loaded.program
+    bytecode = loaded.bytecode
+    if "main" not in bytecode.functions:
         raise DtlError("missing entry function: main")
     package = None
     if program.manifest is not None:
         package = program.manifest.get("package")
     artifact = {
-        "format": "dtl-prototype-v0.3",
-        "source": str(source_path.resolve()),
+        "format": "dtl-bytecode-v0.4",
+        "source": str(loaded.source),
         "target": target,
         "package": package,
         "entry": str(program.entry_source) if program.entry_source else None,
         "sources": [str(path) for path in program.sources],
         "functions": sorted(program.functions),
         "tests": program.tests,
+        "bytecode": serialize_bytecode(bytecode),
     }
     if output_path.exists() and not output_path.is_file():
         raise DtlError(f"output path is not a regular file: {output_path}")
@@ -1073,7 +1340,6 @@ def build_command(source_path: Path, output_path: Path, target: str) -> int:
     except OSError as exc:
         raise DtlError(f"unable to write output file: {output_path}") from exc
     return 0
-
 
 
 def init_command(project_name: str) -> int:
@@ -1088,7 +1354,6 @@ def init_command(project_name: str) -> int:
     (src_dir / "main.dt").write_text(main_source, encoding="utf-8")
     print(f"initialized {project_root}")
     return 0
-
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -1113,7 +1378,6 @@ def create_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("name", help="Directory name for the new project")
 
     return parser
-
 
 
 def main(argv: list[str] | None = None) -> int:

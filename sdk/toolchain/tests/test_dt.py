@@ -58,11 +58,15 @@ class DtCliTests(unittest.TestCase):
             result = self.run_dt("build", str(HELLO_PROJECT), "-o", str(artifact), "--target", "linux-x64")
             self.assertEqual(result.returncode, 0)
             payload = json.loads(artifact.read_text(encoding="utf-8"))
-            self.assertEqual(payload["format"], "dtl-prototype-v0.3")
+            self.assertEqual(payload["format"], "dtl-bytecode-v0.4")
             self.assertEqual(payload["package"]["name"], "hello")
             self.assertEqual(payload["functions"], ["main"])
             self.assertEqual(payload["source"], str(HELLO_PROJECT.resolve()))
             self.assertEqual(payload["target"], "linux-x64")
+            self.assertIn("bytecode", payload)
+            self.assertIn("main", payload["bytecode"])
+            self.assertEqual(payload["bytecode"]["main"]["params"], [])
+            self.assertTrue(any(instruction["op"] == "CALL_NAME" for instruction in payload["bytecode"]["main"]["instructions"]))
 
     def test_build_sample_project_from_nested_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -71,6 +75,7 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             payload = json.loads(artifact.read_text(encoding="utf-8"))
             self.assertEqual(payload["package"]["name"], "crypto-chess")
+            self.assertIn("run_demo", payload["bytecode"])
 
     def test_run_interpreted_language_features(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -179,6 +184,26 @@ fn main() {
             result = self.run_dt("run", str(source))
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, "5\nright\n")
+
+    def test_for_loop_runs_through_bytecode_vm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "for-loop.dt"
+            source.write_text(
+                """
+fn main() {
+  let total = 0;
+  for value in [1, 2, 3, 4] {
+    total = total + value;
+  }
+  println(to_string(total));
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "10\n")
 
     def test_test_command_runs_annotated_tests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

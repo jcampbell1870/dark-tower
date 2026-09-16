@@ -1,10 +1,10 @@
-# Dark Tower SDK (v0.3)
+# Dark Tower SDK (v0.4)
 
 This folder contains the active prototype toolchain and starter runtime layout.
 
 ## Layout
 
-- `toolchain/` — CLI, parser, interpreter, and tests
+- `toolchain/` — CLI, parser, bytecode compiler, VM, and tests
 - `runtime/` — future runtime expansion area
 - `templates/` — starter app templates
 
@@ -22,6 +22,7 @@ Runnable CLI foundation:
 
 - `dt` launcher at repository root
 - implementation in `sdk/toolchain/dt.py`
-- interpreted subset with functions, lists, control flow, and builtins
+- bytecode-compiled subset with functions, lists, control flow, and builtins
+- JSON build artifacts that include compiled bytecode instructions
 - project loading from `DarkTower.toml` and `src/main.dt`
 - automated coverage in `sdk/toolchain/tests/test_dt.py`
