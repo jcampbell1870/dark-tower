@@ -1209,12 +1209,7 @@ def load_program(path: Path, *, require_entry: bool = True, prefer_project: bool
 
 
 def load_artifacts(path: Path) -> LoadedArtifacts:
-    load_result = load_program(path)
-    source = path.expanduser()
-    if source.exists():
-        source = source.resolve()
-    bytecode = BytecodeCompiler().compile_program(load_result.program)
-    return LoadedArtifacts(source=source, project_root=load_result.project_root, program=load_result.program, bytecode=bytecode)
+    return _load_compiled_artifacts(path, require_entry=True, prefer_project=False)
 
 
 def _find_project_root(start: Path, *, search_parents: bool) -> Path | None:
@@ -1307,7 +1302,11 @@ def test_command(source_path: Path) -> int:
 
 
 def load_artifacts_for_tests(path: Path) -> LoadedArtifacts:
-    load_result = load_program(path, require_entry=False, prefer_project=True)
+    return _load_compiled_artifacts(path, require_entry=False, prefer_project=True)
+
+
+def _load_compiled_artifacts(path: Path, *, require_entry: bool, prefer_project: bool) -> LoadedArtifacts:
+    load_result = load_program(path, require_entry=require_entry, prefer_project=prefer_project)
     source = path.expanduser()
     if source.exists():
         source = source.resolve()
