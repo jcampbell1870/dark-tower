@@ -108,7 +108,7 @@ class DtCliTests(unittest.TestCase):
 
             result = self.run_dt("build", str(source), "-o", str(output_dir))
             self.assertEqual(result.returncode, 1)
-            self.assertIn("error: output path is a directory", result.stderr)
+            self.assertIn("error: output path is not a regular file", result.stderr)
 
     def test_run_non_utf8_source_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
