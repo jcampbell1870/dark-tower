@@ -938,7 +938,9 @@ def load_program(path: Path) -> LoadResult:
     candidate = path.expanduser()
     if not candidate.exists():
         resolved = candidate.resolve()
-        if candidate.suffix == ".dt" or candidate.name == "DarkTower.toml":
+        if candidate.name == "DarkTower.toml":
+            return _load_project(resolved.parent)
+        if candidate.suffix == ".dt":
             return _load_file(resolved)
         raise DtlError(f"project path not found: {resolved}")
     if candidate.is_file() and candidate.name == "DarkTower.toml":
@@ -1053,6 +1055,7 @@ def build_command(source_path: Path, output_path: Path, target: str) -> int:
         package = program.manifest.get("package")
     artifact = {
         "format": "dtl-prototype-v0.3",
+        "source": str(source_path.resolve()),
         "target": target,
         "package": package,
         "entry": str(program.entry_source) if program.entry_source else None,

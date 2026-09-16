@@ -61,6 +61,7 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(payload["format"], "dtl-prototype-v0.3")
             self.assertEqual(payload["package"]["name"], "hello")
             self.assertEqual(payload["functions"], ["main"])
+            self.assertEqual(payload["source"], str(HELLO_PROJECT.resolve()))
             self.assertEqual(payload["target"], "linux-x64")
 
     def test_build_sample_project_from_nested_cwd(self) -> None:
@@ -312,6 +313,14 @@ fn addition_works() {
             source.write_text("fn helper() { println(\"ok\"); }\n", encoding="utf-8")
             artifact = Path(tmp_dir) / "library.dtb"
             result = self.run_dt("build", str(source), "-o", str(artifact))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: missing entry function: main", result.stderr)
+
+    def test_run_requires_main_function(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "library.dt"
+            source.write_text("fn helper() { println(\"ok\"); }\n", encoding="utf-8")
+            result = self.run_dt("run", str(source))
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: missing entry function: main", result.stderr)
 
