@@ -653,15 +653,15 @@ class Interpreter:
             return
         if isinstance(statement, WhileStmt):
             loop_env = Environment(env)
-            while self._is_truthy(self._evaluate(statement.condition, env)):
+            while self._is_truthy(self._evaluate(statement.condition, loop_env)):
                 self._execute_block(statement.body, loop_env)
             return
         if isinstance(statement, ForStmt):
             iterable = self._evaluate(statement.iterable, env)
             if not isinstance(iterable, (list, str)):
                 raise DtlError("for-loop expects a list or string")
-            loop_env = Environment(env)
             for item in iterable:
+                loop_env = Environment(env)
                 loop_env.define(statement.name, item)
                 self._execute_block(statement.body, loop_env)
             return
@@ -951,9 +951,14 @@ def _load_project(project_root: Path) -> LoadResult:
         raise DtlError(f"DarkTower.toml not found in {project_root}")
     if tomllib is None:
         raise DtlError("tomllib is unavailable in this Python runtime")
-    manifest_bytes = manifest_path.read_bytes()
     try:
-        manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
+        manifest_text = manifest_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise DtlError(f"manifest is not valid UTF-8: {manifest_path}") from exc
+    except OSError as exc:
+        raise DtlError(f"unable to read manifest: {manifest_path}") from exc
+    try:
+        manifest = tomllib.loads(manifest_text)
     except UnicodeDecodeError as exc:
         raise DtlError(f"manifest is not valid UTF-8: {manifest_path}") from exc
     except tomllib.TOMLDecodeError as exc:

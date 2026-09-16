@@ -177,6 +177,33 @@ fn main() {
             self.assertIn("ok addition_works", result.stdout)
             self.assertIn("1/1 tests passed", result.stdout)
 
+    def test_test_command_fails_when_a_test_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = Path(tmp_dir) / "project"
+            (project / "src").mkdir(parents=True)
+            (project / "DarkTower.toml").write_text(
+                "[package]\nname = \"tests\"\nversion = \"0.1.0\"\nedition = \"2026\"\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "main.dt").write_text(
+                """
+@test
+fn it_fails() {
+  assert_eq(2 + 2, 5);
+}
+
+fn main() {
+  println("ok");
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("test", str(project))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("FAILED it_fails", result.stderr)
+            self.assertIn("0/1 tests passed", result.stdout)
+
     def test_init_creates_project_scaffold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             result = self.run_dt("init", str(Path(tmp_dir) / "demo"))
