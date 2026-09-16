@@ -57,6 +57,26 @@ class DtCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("Crypto Chess opening demo", result.stdout)
 
+    def test_run_project_file_loads_sibling_functions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = Path(tmp_dir) / "project"
+            (project / "src").mkdir(parents=True)
+            (project / "DarkTower.toml").write_text(
+                "[package]\nname = \"multi-file\"\nversion = \"0.1.0\"\nedition = \"2026\"\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "helpers.dt").write_text(
+                "fn label() {\n  return \"loaded\";\n}\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "main.dt").write_text(
+                "fn main() {\n  println(label());\n}\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(project / "src" / "main.dt"))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "loaded\n")
+
     def test_build_sample_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact = Path(tmp_dir) / "hello.dtb"

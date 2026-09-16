@@ -1290,6 +1290,7 @@ def _parse_sources(source_paths: list[Path], manifest: dict[str, Any] | None, en
     functions: dict[str, FunctionDecl] = {}
     tests: list[str] = []
     for source_path in source_paths:
+        source_path = source_path.resolve()
         source = read_text(source_path)
         tokens = Lexer(source, str(source_path)).lex()
         file_functions, file_tests = Parser(tokens, str(source_path)).parse()
