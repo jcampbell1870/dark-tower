@@ -1275,7 +1275,7 @@ def _load_file(source_path: Path) -> LoadResult:
     if not source_path.is_file():
         raise DtlError(f"source path is not a file: {source_path}")
     program = _parse_sources([source_path], manifest=None, entry_source=source_path)
-    return LoadResult(program=program, project_root=source_path.parent)
+    return LoadResult(program=program, project_root=None)
 
 
 def _parse_sources(source_paths: list[Path], manifest: dict[str, Any] | None, entry_source: Path | None) -> Program:

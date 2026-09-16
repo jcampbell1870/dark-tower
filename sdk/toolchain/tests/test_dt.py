@@ -289,6 +289,29 @@ fn addition_works() {
             self.assertEqual(result.returncode, 0)
             self.assertIn("1/1 tests passed", result.stdout)
 
+    def test_run_rejects_project_without_entry_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = Path(tmp_dir) / "project"
+            (project / "src").mkdir(parents=True)
+            (project / "DarkTower.toml").write_text(
+                "[package]\nname = \"broken\"\nversion = \"0.1.0\"\nedition = \"2026\"\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "helper.dt").write_text("fn helper() { println(\"ok\"); }\n", encoding="utf-8")
+            result = self.run_dt("run", str(project))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: entry source not found", result.stderr)
+
+    def test_invalid_manifest_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = Path(tmp_dir) / "project"
+            (project / "src").mkdir(parents=True)
+            (project / "DarkTower.toml").write_text("[package\nname = \"broken\"\n", encoding="utf-8")
+            (project / "src" / "main.dt").write_text("fn main() { println(\"ok\"); }\n", encoding="utf-8")
+            result = self.run_dt("run", str(project))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: invalid manifest:", result.stderr)
+
     def test_init_creates_project_scaffold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             result = self.run_dt("init", str(Path(tmp_dir) / "demo"))
