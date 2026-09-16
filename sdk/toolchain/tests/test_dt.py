@@ -149,6 +149,57 @@ fn main() {
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, ".K\n")
 
+    def test_invalid_index_operations_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "bad-index.dt"
+            source.write_text(
+                """
+fn main() {
+  let values = [1, 2];
+  println(to_string(values["0"]));
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: index must be an integer", result.stderr)
+
+    def test_negative_indexes_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "negative-index.dt"
+            source.write_text(
+                """
+fn main() {
+  let values = [1, 2];
+  println(to_string(values[-1]));
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: index out of range", result.stderr)
+
+    def test_negative_index_assignment_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "negative-assign.dt"
+            source.write_text(
+                """
+fn main() {
+  let values = [1, 2];
+  values[-1] = 9;
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: list index out of range", result.stderr)
+
     def test_while_loop_updates_outer_variables(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "loop-scope.dt"
@@ -334,6 +385,26 @@ fn addition_works() {
             result = self.run_dt("run", str(project))
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: entry source not found", result.stderr)
+
+    def test_run_uses_root_main_when_src_entry_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project = Path(tmp_dir) / "project"
+            (project / "src").mkdir(parents=True)
+            (project / "DarkTower.toml").write_text(
+                "[package]\nname = \"fallback\"\nversion = \"0.1.0\"\nedition = \"2026\"\n",
+                encoding="utf-8",
+            )
+            (project / "src" / "helper.dt").write_text(
+                "fn label() {\n  return \"fallback\";\n}\n",
+                encoding="utf-8",
+            )
+            (project / "main.dt").write_text(
+                "fn main() {\n  println(label());\n}\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(project))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "fallback\n")
 
     def test_invalid_manifest_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

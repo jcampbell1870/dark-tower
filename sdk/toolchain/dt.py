@@ -972,6 +972,8 @@ class VirtualMachine:
 
     def _index_get(self, collection: Any, index: Any) -> Any:
         self._require_type(index, int, "index must be an integer")
+        if index < 0:
+            raise DtlError("index out of range")
         try:
             return collection[index]
         except (IndexError, TypeError) as exc:
@@ -981,6 +983,8 @@ class VirtualMachine:
         self._require_type(index, int, "index must be an integer")
         if not isinstance(collection, list):
             raise DtlError("indexed assignment requires a list")
+        if index < 0:
+            raise DtlError("list index out of range")
         try:
             collection[index] = value
         except IndexError as exc:
@@ -1253,26 +1257,35 @@ def _load_project(project_root: Path, *, require_entry: bool = True) -> LoadResu
         raise DtlError(f"invalid manifest: {manifest_path}: {exc}") from exc
 
     src_dir = project_root / "src"
+    root_entry = project_root / "main.dt"
     if src_dir.exists():
         if not src_dir.is_dir():
             raise DtlError(f"source directory is not a directory: {src_dir}")
-        entry_source = src_dir / "main.dt"
-        if require_entry and not entry_source.exists():
-            raise DtlError(f"entry source not found: {entry_source}")
-        if entry_source.exists() and not entry_source.is_file():
-            raise DtlError(f"entry source is not a file: {entry_source}")
+        src_entry = src_dir / "main.dt"
+        if src_entry.exists() and not src_entry.is_file():
+            raise DtlError(f"entry source is not a file: {src_entry}")
+        if root_entry.exists() and not root_entry.is_file():
+            raise DtlError(f"entry source is not a file: {root_entry}")
         source_paths = sorted(src_dir.rglob("*.dt"))
+        if root_entry.exists():
+            source_paths.append(root_entry)
         if not source_paths:
             raise DtlError(f"no .dt files found in {src_dir}")
-        entry = entry_source if entry_source.exists() else None
+        if src_entry.exists():
+            entry = src_entry
+        elif root_entry.exists():
+            entry = root_entry
+        elif require_entry:
+            raise DtlError(f"entry source not found: {src_entry}")
+        else:
+            entry = None
     else:
-        entry_source = project_root / "main.dt"
-        if not entry_source.exists():
-            raise DtlError(f"entry source not found: {entry_source}")
-        if not entry_source.is_file():
-            raise DtlError(f"entry source is not a file: {entry_source}")
-        source_paths = [entry_source]
-        entry = entry_source
+        if not root_entry.exists():
+            raise DtlError(f"entry source not found: {root_entry}")
+        if not root_entry.is_file():
+            raise DtlError(f"entry source is not a file: {root_entry}")
+        source_paths = [root_entry]
+        entry = root_entry
     program = _parse_sources(source_paths, manifest=manifest, entry_source=entry)
     return LoadResult(program=program, project_root=project_root)
 
