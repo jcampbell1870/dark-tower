@@ -3,11 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
-
-PRINT_START_RE = re.compile(r'print\("')
 
 
 class DtlError(Exception):
@@ -21,39 +18,53 @@ def _decode_string(value: str) -> str:
         raise DtlError(f"invalid string literal: {value}") from exc
 
 
+def _is_escaped(source: str, index: int, lower_bound: int = 0) -> bool:
+    backslash_count = 0
+    lookback = index - 1
+    while lookback >= lower_bound and source[lookback] == "\\":
+        backslash_count += 1
+        lookback -= 1
+    return backslash_count % 2 == 1
+
+
 def extract_prints(source: str) -> list[str]:
     outputs: list[str] = []
     position = 0
+    in_string = False
 
-    while True:
-        match = PRINT_START_RE.search(source, position)
-        if match is None:
-            break
+    while position < len(source):
+        if source[position] == '"' and not _is_escaped(source, position):
+            in_string = not in_string
+            position += 1
+            continue
 
-        literal_start = match.end()
-        index = literal_start
+        if not in_string and source.startswith('print("', position):
+            literal_start = position + len('print("')
+            index = literal_start
 
-        while index < len(source):
-            if source[index] == '"':
-                backslash_count = 0
-                lookback = index - 1
-                while lookback >= literal_start and source[lookback] == "\\":
-                    backslash_count += 1
-                    lookback -= 1
-
-                if backslash_count % 2 == 0:
+            while index < len(source):
+                if source[index] == '"' and not _is_escaped(source, index, literal_start):
                     literal = source[literal_start:index]
-                    trailing = source[index + 1 :]
-                    trailing_match = re.match(r"\s*\)\s*;", trailing)
-                    if trailing_match is None:
+                    index += 1
+                    while index < len(source) and source[index].isspace():
+                        index += 1
+                    if index >= len(source) or source[index] != ")":
+                        raise DtlError("invalid print statement syntax")
+                    index += 1
+                    while index < len(source) and source[index].isspace():
+                        index += 1
+                    if index >= len(source) or source[index] != ";":
                         raise DtlError("invalid print statement syntax")
                     outputs.append(_decode_string(literal))
-                    position = index + 1 + trailing_match.end()
+                    position = index + 1
                     break
+                index += 1
+            else:
+                raise DtlError("unterminated string literal in print statement")
 
-            index += 1
-        else:
-            raise DtlError("unterminated string literal in print statement")
+            continue
+
+        position += 1
 
     return outputs
 

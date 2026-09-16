@@ -118,6 +118,23 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("error: source file is not valid UTF-8", result.stderr)
 
+    def test_build_non_utf8_source_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "non-utf8.dt"
+            source.write_bytes(b'fn main() { print("' + bytes([0xFF]) + b'"); }')
+            artifact = Path(tmp_dir) / "non-utf8.dtb"
+            result = self.run_dt("build", str(source), "-o", str(artifact))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("error: source file is not valid UTF-8", result.stderr)
+
+    def test_run_ignores_print_inside_string_literal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "nested-print.dt"
+            source.write_text('fn main() { print("print(\\"x\\");\\n"); }', encoding="utf-8")
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, 'print("x");\n')
+
 
 if __name__ == "__main__":
     unittest.main()
