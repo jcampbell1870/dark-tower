@@ -46,6 +46,12 @@ class DtCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "Hello, Dark Tower!\n")
 
+    def test_run_sample_project_from_nested_cwd(self) -> None:
+        nested = CRYPTO_CHESS_PROJECT / "src"
+        result = self.run_dt("run", cwd=nested)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Crypto Chess opening demo", result.stdout)
+
     def test_build_sample_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact = Path(tmp_dir) / "hello.dtb"
@@ -56,6 +62,14 @@ class DtCliTests(unittest.TestCase):
             self.assertEqual(payload["package"]["name"], "hello")
             self.assertEqual(payload["functions"], ["main"])
             self.assertEqual(payload["target"], "linux-x64")
+
+    def test_build_sample_project_from_nested_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            artifact = Path(tmp_dir) / "crypto.dtb"
+            result = self.run_dt("build", "-o", str(artifact), cwd=CRYPTO_CHESS_PROJECT / "src")
+            self.assertEqual(result.returncode, 0)
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+            self.assertEqual(payload["package"]["name"], "crypto-chess")
 
     def test_run_interpreted_language_features(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -244,6 +258,11 @@ fn main() {
 
     def test_crypto_chess_tests_pass(self) -> None:
         result = self.run_dt("test", str(CRYPTO_CHESS_PROJECT))
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("2/2 tests passed", result.stdout)
+
+    def test_crypto_chess_tests_pass_from_nested_cwd(self) -> None:
+        result = self.run_dt("test", cwd=CRYPTO_CHESS_PROJECT / "src")
         self.assertEqual(result.returncode, 0)
         self.assertIn("2/2 tests passed", result.stdout)
 

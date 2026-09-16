@@ -654,7 +654,7 @@ class Interpreter:
         if isinstance(statement, WhileStmt):
             loop_env = Environment(env)
             while self._is_truthy(self._evaluate(statement.condition, loop_env)):
-                self._execute_block(statement.body, loop_env)
+                self._execute_block(statement.body, Environment(loop_env))
             return
         if isinstance(statement, ForStmt):
             iterable = self._evaluate(statement.iterable, env)
@@ -940,9 +940,18 @@ def load_program(path: Path) -> LoadResult:
     if candidate.is_file() and candidate.name == "DarkTower.toml":
         return _load_project(candidate.resolve().parent)
     if candidate.is_dir():
-        return _load_project(candidate.resolve())
+        return _load_project(_find_project_root(candidate.resolve()))
     return _load_file(candidate.resolve())
 
+
+def _find_project_root(start: Path) -> Path:
+    current = start
+    while True:
+        if (current / "DarkTower.toml").is_file():
+            return current
+        if current.parent == current:
+            return start
+        current = current.parent
 
 
 def _load_project(project_root: Path) -> LoadResult:
