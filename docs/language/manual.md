@@ -30,7 +30,8 @@ The current runtime executes a practical subset of DTL:
 - integers, booleans, strings, and lists
 - `let`, assignment, `if/else`, `while`, `for`, and `return`
 - builtin helpers: `print`, `println`, `len`, `join`, `push`, `pop`, `clone`, `hash`, `to_string`, and `assert_eq`
-- project loading through `DarkTower.toml` with `src/main.dt` as the entry module
+- multi-file project loading through `DarkTower.toml`, with `src/main.dt` as the entry module and every `src/**/*.dt` file loaded into the program
+- test discovery for functions marked with the `@test` decorator across loaded project sources
 
 Features documented later in this manual that go beyond this subset remain part of the broader language design rather than the current runtime implementation.
 

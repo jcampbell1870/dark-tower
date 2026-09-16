@@ -118,7 +118,7 @@ fn main() {
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, ".K\n")
 
-    def test_while_loop_reuses_block_scope(self) -> None:
+    def test_while_loop_updates_outer_variables(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "loop-scope.dt"
             source.write_text(
@@ -126,12 +126,8 @@ fn main() {
 fn main() {
   let i = 0;
   while i < 3 {
-    let carry = i;
-    if carry < 2 {
-      i = carry + 1;
-    } else {
-      i = 3;
-    }
+    let next_value = i + 1;
+    i = next_value;
   }
   println(to_string(i));
 }
@@ -142,6 +138,29 @@ fn main() {
             result = self.run_dt("run", str(source))
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, "3\n")
+
+    def test_while_loop_iteration_bindings_do_not_leak(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "loop-leak.dt"
+            source.write_text(
+                """
+fn main() {
+  let i = 0;
+  while i < 2 {
+    if i == 1 {
+      println(to_string(marker));
+    }
+    let marker = i;
+    i = i + 1;
+  }
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_dt("run", str(source))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("undefined variable: marker", result.stderr)
 
     def test_logical_operators_return_operand_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -240,6 +259,12 @@ fn main() {
         result = self.run_dt("run", str(missing))
         self.assertEqual(result.returncode, 1)
         self.assertIn("error: source file not found", result.stderr)
+
+    def test_run_missing_project_directory(self) -> None:
+        missing = REPO_ROOT / "samples" / "missing-project"
+        result = self.run_dt("run", str(missing))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("error: project path not found", result.stderr)
 
     def test_run_non_utf8_source_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -652,9 +652,8 @@ class Interpreter:
                 self._execute_block(statement.else_branch, Environment(env))
             return
         if isinstance(statement, WhileStmt):
-            loop_env = Environment(env)
-            while self._is_truthy(self._evaluate(statement.condition, loop_env)):
-                self._execute_block(statement.body, Environment(loop_env))
+            while self._is_truthy(self._evaluate(statement.condition, env)):
+                self._execute_block(statement.body, Environment(env))
             return
         if isinstance(statement, ForStmt):
             iterable = self._evaluate(statement.iterable, env)
@@ -937,6 +936,11 @@ class LoadResult:
 
 def load_program(path: Path) -> LoadResult:
     candidate = path.expanduser()
+    if not candidate.exists():
+        resolved = candidate.resolve()
+        if candidate.suffix == ".dt" or candidate.name == "DarkTower.toml":
+            return _load_file(resolved)
+        raise DtlError(f"project path not found: {resolved}")
     if candidate.is_file() and candidate.name == "DarkTower.toml":
         return _load_project(candidate.resolve().parent)
     if candidate.is_dir():
@@ -978,6 +982,8 @@ def _load_project(project_root: Path) -> LoadResult:
         entry_source = src_dir / "main.dt"
         if not entry_source.exists():
             raise DtlError(f"entry source not found: {entry_source}")
+        if not entry_source.is_file():
+            raise DtlError(f"entry source is not a file: {entry_source}")
         source_paths = sorted(src_dir.rglob("*.dt"))
         if not source_paths:
             raise DtlError(f"no .dt files found in {src_dir}")
@@ -985,6 +991,8 @@ def _load_project(project_root: Path) -> LoadResult:
         entry_source = project_root / "main.dt"
         if not entry_source.exists():
             raise DtlError(f"entry source not found: {entry_source}")
+        if not entry_source.is_file():
+            raise DtlError(f"entry source is not a file: {entry_source}")
         source_paths = [entry_source]
     program = _parse_sources(source_paths, manifest=manifest, entry_source=entry_source)
     return LoadResult(program=program, project_root=project_root)
